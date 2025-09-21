@@ -418,3 +418,407 @@ func GetDefaultProperties() S3Properties {
 		WebsiteEnabled: false,
 	}
 }
+
+// GetEnterpriseDataProperties returns a configuration for a secure enterprise data bucket
+// Optimized for: Financial data, PII, regulated industries, compliance requirements
+func GetEnterpriseDataProperties() S3Properties {
+	return S3Properties{
+		// Basic Configuration
+		BucketName:        "", // Caller must provide a unique name
+		RemovalPolicy:     "retain",
+		AutoDeleteObjects: false,
+
+		// Enhanced Security Configuration
+		PublicAccess:      false, // Never allow public access
+		Encryption:        "KMS", // Use KMS for maximum control
+		BucketKeyEnabled:  true,  // Reduce KMS costs
+		EnforceSSL:        true,  // Force HTTPS
+		MinimumTLSVersion: 1.3,   // Highest TLS version
+
+		// Data Protection & Compliance
+		Versioned:                      true,
+		ObjectLockEnabled:              true,
+		ObjectLockDefaultRetentionMode: "COMPLIANCE", // Cannot be bypassed
+		ObjectLockDefaultRetentionDays: 2555,         // 7 years retention
+
+		// Cost Optimization
+		EnableIntelligentTiering: true,
+		TransitionMinimumSize:    "ALL_STORAGE_CLASSES_128_K",
+
+		// Comprehensive Monitoring & Auditing
+		EnableAccessLogs:   true,
+		EnableInventory:    true,
+		EnableMetrics:      true,
+		EventBridgeEnabled: true, // For compliance automation
+
+		// Performance - Not needed for enterprise data
+		TransferAcceleration: false,
+		EnableCORS:           false,
+
+		// Lifecycle Management for Compliance
+		LifecycleRules: []*awss3.LifecycleRule{
+			{
+				Id: jsii.String("ComplianceArchival"),
+				Transitions: &[]*awss3.Transition{
+					{
+						StorageClass:    awss3.StorageClass_GLACIER(),
+						TransitionAfter: awscdk.Duration_Days(jsii.Number(365)), // 1 year to Glacier
+					},
+					{
+						StorageClass:    awss3.StorageClass_DEEP_ARCHIVE(),
+						TransitionAfter: awscdk.Duration_Days(jsii.Number(1095)), // 3 years to Deep Archive
+					},
+				},
+			},
+		},
+	}
+}
+
+// GetStaticWebsiteProperties returns a configuration for a public static website hosting bucket
+// NOTE: For production websites, use CloudFront + S3 with OAC instead of direct S3 website hosting
+/*
+func GetStaticWebsiteProperties() S3Properties {
+	return S3Properties{
+		// Basic Configuration
+		BucketName:        "", // Caller must provide a unique name
+		RemovalPolicy:     "destroy",
+		AutoDeleteObjects: true,
+
+		// Website Hosting Configuration
+		WebsiteEnabled:       true,
+		WebsiteIndexDocument: "index.html",
+		WebsiteErrorDocument: "404.html",
+
+		// Security - Minimal for website hosting
+		PublicAccess:     true,         // Required for website hosting
+		Encryption:       "S3_MANAGED", // Basic encryption
+		EnforceSSL:       false,        // Cannot enforce SSL with website hosting
+		BucketKeyEnabled: true,
+
+		// Data Protection
+		Versioned:         true,  // Keep for deployment rollbacks
+		ObjectLockEnabled: false, // Not needed for websites
+
+		// Cost Optimization
+		EnableIntelligentTiering: false, // Not cost-effective for websites
+
+		// Lifecycle for cleanup
+		LifecycleRules: []*awss3.LifecycleRule{
+			{
+				Id:                          jsii.String("WebsiteCleanup"),
+				NoncurrentVersionExpiration: awscdk.Duration_Minutes(jsii.Number(30)),
+			},
+		},
+
+		// Performance & CORS
+		TransferAcceleration: false, // Use CloudFront instead
+		EnableCORS:           true,
+		CORSAllowedOrigins:   []string{"*"},           // Allow all origins for website
+		CORSAllowedMethods:   []string{"GET", "HEAD"}, // Only read operations
+		CORSAllowedHeaders:   []string{"*"},
+
+		// Monitoring
+		EnableAccessLogs:   false, // CloudFront logs are better
+		EventBridgeEnabled: false,
+		EnableInventory:    false,
+		EnableMetrics:      false,
+	}
+}
+*/
+
+// GetCloudFrontOriginProperties returns optimized configuration for S3 bucket as CloudFront origin
+// This is the RECOMMENDED approach for static websites instead of S3 website hosting
+func GetCloudFrontOriginProperties() S3Properties {
+	return S3Properties{
+		// Basic Configuration
+		BucketName:        "", // Caller must provide a unique name
+		RemovalPolicy:     "destroy",
+		AutoDeleteObjects: true,
+
+		// Security - Keep bucket private, access via CloudFront only
+		PublicAccess:      false, // CloudFront uses OAC for access
+		Encryption:        "S3_MANAGED",
+		BucketKeyEnabled:  true,
+		EnforceSSL:        true, // CloudFront handles SSL termination
+		MinimumTLSVersion: 1.2,
+
+		// Data Protection
+		Versioned:         true, // For deployment rollbacks
+		ObjectLockEnabled: false,
+
+		// Performance Optimization
+		TransferAcceleration: false, // CloudFront provides acceleration
+		EnableCORS:           false, // CloudFront handles CORS
+
+		// Cost Optimization
+		EnableIntelligentTiering: false, // Not cost-effective for frequently accessed content
+
+		// Lifecycle Management
+		LifecycleRules: []*awss3.LifecycleRule{
+			{
+				Id:                          jsii.String("WebContentCleanup"),
+				NoncurrentVersionExpiration: awscdk.Duration_Minutes(jsii.Number(30)),
+			},
+		},
+
+		// Monitoring
+		EnableAccessLogs:   false, // CloudFront access logs are sufficient
+		EventBridgeEnabled: true,  // For automated deployments
+		EnableInventory:    false,
+		EnableMetrics:      false,
+
+		// Website Hosting - Disabled (CloudFront handles this)
+		WebsiteEnabled: false,
+	}
+}
+
+// GetDataLakeProperties returns a configuration for a data lake analytics bucket
+// Optimized for: Big data analytics, data science, batch processing workloads
+func GetDataLakeProperties() S3Properties {
+	return S3Properties{
+		// Basic Configuration
+		BucketName:        "", // Caller must provide a unique name
+		RemovalPolicy:     "retain",
+		AutoDeleteObjects: false,
+
+		// Security
+		PublicAccess:      false,
+		Encryption:        "KMS", // Better for analytics compliance
+		BucketKeyEnabled:  true,
+		EnforceSSL:        true,
+		MinimumTLSVersion: 1.2,
+
+		// Data Protection
+		Versioned:         true,
+		ObjectLockEnabled: false, // Usually not needed for analytics data
+
+		// Cost Optimization - Critical for data lakes
+		EnableIntelligentTiering: true,
+		TransitionMinimumSize:    "ALL_STORAGE_CLASSES_128_K",
+
+		// Comprehensive Lifecycle Management
+		LifecycleRules: []*awss3.LifecycleRule{
+			{
+				Id:     jsii.String("DataLakeLifecycle"),
+				Prefix: jsii.String("raw-data/"),
+				Transitions: &[]*awss3.Transition{
+					{
+						StorageClass:    awss3.StorageClass_INFREQUENT_ACCESS(),
+						TransitionAfter: awscdk.Duration_Days(jsii.Number(30)),
+					},
+					{
+						StorageClass:    awss3.StorageClass_GLACIER(),
+						TransitionAfter: awscdk.Duration_Days(jsii.Number(90)),
+					},
+					{
+						StorageClass:    awss3.StorageClass_DEEP_ARCHIVE(),
+						TransitionAfter: awscdk.Duration_Days(jsii.Number(365)),
+					},
+				},
+			},
+			{
+				Id:     jsii.String("ProcessedDataLifecycle"),
+				Prefix: jsii.String("processed-data/"),
+				Transitions: &[]*awss3.Transition{
+					{
+						StorageClass:    awss3.StorageClass_INFREQUENT_ACCESS(),
+						TransitionAfter: awscdk.Duration_Days(jsii.Number(7)), // Faster transition for processed data
+					},
+					{
+						StorageClass:    awss3.StorageClass_GLACIER(),
+						TransitionAfter: awscdk.Duration_Days(jsii.Number(30)),
+					},
+				},
+			},
+		},
+
+		// Enhanced Monitoring & Analytics
+		EnableAccessLogs:   true,
+		AccessLogsPrefix:   "access-logs/",
+		EnableInventory:    true,
+		EnableMetrics:      true,
+		MetricsPrefix:      "analytics/",
+		EventBridgeEnabled: true, // For data pipeline automation
+
+		// Performance
+		TransferAcceleration: false, // Usually not needed for batch processing
+		EnableCORS:           false,
+	}
+}
+
+// GetBackupProperties returns a configuration for a backup and disaster recovery bucket
+// Optimized for: Database backups, application backups, disaster recovery
+func GetBackupProperties() S3Properties {
+	return S3Properties{
+		// Basic Configuration
+		BucketName:        "", // Caller must provide a unique name
+		RemovalPolicy:     "retain",
+		AutoDeleteObjects: false,
+
+		// Enhanced Security for Backups
+		PublicAccess:      false,
+		Encryption:        "KMS", // Enhanced security for backups
+		BucketKeyEnabled:  true,
+		EnforceSSL:        true,
+		MinimumTLSVersion: 1.2,
+
+		// Data Protection & Compliance
+		Versioned:                      true,
+		ObjectLockEnabled:              true,
+		ObjectLockDefaultRetentionMode: "GOVERNANCE", // Allows administrative overrides
+		ObjectLockDefaultRetentionDays: 90,           // 3 months minimum retention
+
+		// Aggressive Cost Optimization for Backups
+		EnableIntelligentTiering: true,
+
+		// Lifecycle Management for Backup Retention
+		LifecycleRules: []*awss3.LifecycleRule{
+			{
+				Id: jsii.String("BackupRetention"),
+				Transitions: &[]*awss3.Transition{
+					{
+						StorageClass:    awss3.StorageClass_INFREQUENT_ACCESS(),
+						TransitionAfter: awscdk.Duration_Days(jsii.Number(30)), // Move to IA after 1 month
+					},
+					{
+						StorageClass:    awss3.StorageClass_GLACIER(),
+						TransitionAfter: awscdk.Duration_Days(jsii.Number(90)), // Archive after 3 months
+					},
+					{
+						StorageClass:    awss3.StorageClass_DEEP_ARCHIVE(),
+						TransitionAfter: awscdk.Duration_Days(jsii.Number(365)), // Deep archive after 1 year
+					},
+				},
+				// Backup retention policy
+				Expiration: awscdk.Duration_Days(jsii.Number(2555)),
+			},
+		},
+
+		// Cross-Region Replication for DR
+		ReplicationEnabled:      false, // Enable manually with specific destination
+		ReplicationDestination:  "",    // Set to target region bucket ARN
+		ReplicationStorageClass: "GLACIER",
+
+		// Comprehensive Monitoring
+		EnableAccessLogs:   true,
+		EnableInventory:    true,
+		EnableMetrics:      true,
+		EventBridgeEnabled: true, // For backup automation workflows
+
+		// Performance
+		TransferAcceleration: false, // Not typically needed for backups
+		EnableCORS:           false,
+	}
+}
+
+// GetMediaStreamingProperties returns a configuration for a media streaming application bucket
+// Optimized for: Video/audio streaming, CDN origin, high-throughput content delivery
+func GetMediaStreamingProperties() S3Properties {
+	return S3Properties{
+		// Basic Configuration
+		BucketName:        "", // Caller must provide a unique name
+		RemovalPolicy:     "retain",
+		AutoDeleteObjects: false,
+
+		// Security - Balanced for content delivery
+		PublicAccess:      false,        // Use CloudFront with OAC instead
+		Encryption:        "S3_MANAGED", // KMS adds latency for streaming
+		BucketKeyEnabled:  true,
+		EnforceSSL:        true,
+		MinimumTLSVersion: 1.2,
+
+		// Data Protection
+		Versioned:         false, // Media files are typically immutable
+		ObjectLockEnabled: false,
+
+		// Cost Optimization for Media
+		EnableIntelligentTiering: true,
+
+		// Lifecycle Management for Media Content
+		LifecycleRules: []*awss3.LifecycleRule{
+			{
+				Id:     jsii.String("MediaContentLifecycle"),
+				Prefix: jsii.String("videos/"),
+				Transitions: &[]*awss3.Transition{
+					{
+						StorageClass:    awss3.StorageClass_INFREQUENT_ACCESS(),
+						TransitionAfter: awscdk.Duration_Days(jsii.Number(90)), // Popular content stays hot longer
+					},
+					{
+						StorageClass:    awss3.StorageClass_GLACIER(),
+						TransitionAfter: awscdk.Duration_Days(jsii.Number(365)), // Archive old content
+					},
+				},
+			},
+		},
+
+		// Performance Optimization for Streaming
+		TransferAcceleration: false, // Use CloudFront instead
+		EnableCORS:           true,
+		CORSAllowedOrigins: []string{
+			"https://player.example.com", // Specific player domains
+			"https://*.cdn.example.com",  // CDN subdomains
+		},
+		CORSAllowedMethods: []string{"GET", "HEAD"}, // Only read operations for streaming
+		CORSAllowedHeaders: []string{"Range", "Authorization", "Content-Type"},
+
+		// Monitoring for Performance
+		EnableAccessLogs:   false, // Use CloudFront logs instead
+		EnableInventory:    false,
+		EnableMetrics:      true,
+		MetricsPrefix:      "videos/", // Monitor video performance
+		EventBridgeEnabled: true,      // For content processing workflows
+
+		// Website Hosting - Disabled (use CloudFront)
+		WebsiteEnabled: false,
+	}
+}
+
+// GetDevelopmentProperties returns a configuration for development/testing environments
+// Optimized for: Cost efficiency, easy cleanup, development workflows
+func GetDevelopmentProperties() S3Properties {
+	return S3Properties{
+		// Basic Configuration - Easy cleanup
+		BucketName:        "", // Caller must provide a unique name
+		RemovalPolicy:     "destroy",
+		AutoDeleteObjects: true,
+
+		// Minimal Security for Development
+		PublicAccess:      false,
+		Encryption:        "S3_MANAGED",
+		BucketKeyEnabled:  false, // Reduce complexity
+		EnforceSSL:        false, // Reduce complexity for dev
+		MinimumTLSVersion: 1.2,
+
+		// Basic Data Protection
+		Versioned:         false, // Reduce costs in dev
+		ObjectLockEnabled: false,
+
+		// Minimal Cost Optimization
+		EnableIntelligentTiering: false, // Not cost-effective for short-lived dev data
+
+		// Simple Lifecycle for Cost Control
+		LifecycleRules: []*awss3.LifecycleRule{
+			{
+				Id:         jsii.String("DevCleanup"),
+				Expiration: awscdk.Duration_Days(jsii.Number(30)), // Auto-cleanup after 30 days
+			},
+		},
+
+		// Minimal Monitoring
+		EnableAccessLogs:   false,
+		EnableInventory:    false,
+		EnableMetrics:      false,
+		EventBridgeEnabled: false,
+
+		// Development Features
+		TransferAcceleration: false,
+		EnableCORS:           true,          // Often needed for web development
+		CORSAllowedOrigins:   []string{"*"}, // Permissive for development
+		CORSAllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "HEAD"},
+		CORSAllowedHeaders:   []string{"*"},
+
+		// Website Hosting - Enabled for dev testing
+		WebsiteEnabled: false, // Enable only if needed
+	}
+}
