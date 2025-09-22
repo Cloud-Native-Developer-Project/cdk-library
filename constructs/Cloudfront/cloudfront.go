@@ -809,3 +809,151 @@ func getStringSliceOrDefault(value, defaultValue []string) []string {
 	}
 	return value
 }
+
+// Default property factories for common use cases
+
+// DefaultS3StaticWebsiteProps returns defaults for an S3 static website (public website endpoint)
+func DefaultS3StaticWebsiteProps() CloudFrontProperties {
+	return CloudFrontProperties{
+		Comment:           "S3 Static Website Distribution",
+		Enabled:           true,
+		DefaultRootObject: "index.html",
+		PriceClass:        "ALL",
+		HttpVersion:       "HTTP2_AND_3",
+		EnableIPv6:        true,
+
+		OriginType:   "S3_WEBSITE",
+		S3BucketName: "", // completar nombre del bucket
+
+		ViewerProtocolPolicy: "REDIRECT_TO_HTTPS",
+		AllowedMethods:       []string{"GET", "HEAD", "OPTIONS"},
+		CachedMethods:        []string{"GET", "HEAD"},
+		CompressResponse:     true,
+
+		CachePolicy:           "MANAGED_CACHING_OPTIMIZED",
+		OriginRequestPolicy:   "MANAGED_ALL_VIEWER",
+		ResponseHeadersPolicy: "MANAGED_SECURITY_HEADERS",
+
+		EnableErrorPages: true,
+		ErrorPageConfigs: []ErrorPageConfig{
+			{ErrorCode: 403, ResponseCode: 200, ResponsePagePath: "/index.html", ErrorCachingMinTTL: 0},
+			{ErrorCode: 404, ResponseCode: 200, ResponsePagePath: "/index.html", ErrorCachingMinTTL: 0},
+		},
+	}
+}
+
+// DefaultS3PrivateOACProps returns defaults for serving private S3 content via OAC
+func DefaultS3PrivateOACProps() CloudFrontProperties {
+	return CloudFrontProperties{
+		Comment:     "S3 Private Content with OAC",
+		Enabled:     true,
+		PriceClass:  "ALL",
+		HttpVersion: "HTTP2_AND_3",
+		EnableIPv6:  true,
+
+		OriginType:             "S3",
+		S3BucketName:           "", // completar nombre del bucket
+		UseOriginAccessControl: true,
+		ViewerProtocolPolicy:   "REDIRECT_TO_HTTPS",
+		AllowedMethods:         []string{"GET", "HEAD", "OPTIONS"},
+		CachedMethods:          []string{"GET", "HEAD"},
+		CompressResponse:       true,
+		CachePolicy:            "MANAGED_CACHING_OPTIMIZED",
+		OriginRequestPolicy:    "MANAGED_ALL_VIEWER",
+		ResponseHeadersPolicy:  "MANAGED_SECURITY_HEADERS",
+	}
+}
+
+// DefaultHttpApiProps returns defaults for a public HTTP(s) API on a custom origin
+func DefaultHttpApiProps() CloudFrontProperties {
+	return CloudFrontProperties{
+		Comment:     "HTTP API behind CloudFront",
+		Enabled:     true,
+		PriceClass:  "ALL",
+		HttpVersion: "HTTP2_AND_3",
+		EnableIPv6:  true,
+
+		OriginType:           "HTTP",
+		OriginDomainName:     "", // completar dominio del API o custom origin
+		OriginProtocolPolicy: "HTTPS_ONLY",
+		OriginPort:           443,
+
+		ViewerProtocolPolicy:  "REDIRECT_TO_HTTPS",
+		AllowedMethods:        []string{"GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"},
+		CachedMethods:         []string{"GET", "HEAD"},
+		CompressResponse:      true,
+		CachePolicy:           "MANAGED_CACHING_DISABLED", // APIs usualmente no se cachean por defecto
+		OriginRequestPolicy:   "MANAGED_ALL_VIEWER",
+		ResponseHeadersPolicy: "MANAGED_SECURITY_HEADERS",
+	}
+}
+
+// DefaultAlbApiProps returns defaults for an API served by an ALB
+func DefaultAlbApiProps() CloudFrontProperties {
+	props := DefaultHttpApiProps()
+	props.Comment = "ALB API behind CloudFront"
+	props.OriginType = "LOAD_BALANCER"
+	// OriginDomainName debe ser el DNS del ALB
+	return props
+}
+
+// DefaultSpaProps returns defaults for Single Page Applications (SPA) on S3 website hosting
+func DefaultSpaProps() CloudFrontProperties {
+	props := DefaultS3StaticWebsiteProps()
+	props.Comment = "SPA on S3 Website with SPA fallbacks"
+	props.DefaultRootObject = "index.html"
+	props.EnableErrorPages = true
+	props.ErrorPageConfigs = []ErrorPageConfig{
+		{ErrorCode: 403, ResponseCode: 200, ResponsePagePath: "/index.html", ErrorCachingMinTTL: 0},
+		{ErrorCode: 404, ResponseCode: 200, ResponsePagePath: "/index.html", ErrorCachingMinTTL: 0},
+	}
+	return props
+}
+
+// DefaultMediaStreamingProps returns defaults optimized for media streaming workloads
+func DefaultMediaStreamingProps() CloudFrontProperties {
+	return CloudFrontProperties{
+		Comment:         "Media streaming optimized distribution",
+		Enabled:         true,
+		PriceClass:      "ALL",
+		HttpVersion:     "HTTP2_AND_3",
+		EnableIPv6:      true,
+		SmoothStreaming: true,
+
+		OriginType:       "HTTP",
+		OriginDomainName: "", // completar origen del media server/packager
+
+		ViewerProtocolPolicy:  "REDIRECT_TO_HTTPS",
+		AllowedMethods:        []string{"GET", "HEAD", "OPTIONS"},
+		CachedMethods:         []string{"GET", "HEAD"},
+		CompressResponse:      true,
+		CachePolicy:           "MANAGED_CACHING_OPTIMIZED",
+		OriginRequestPolicy:   "MANAGED_ALL_VIEWER",
+		ResponseHeadersPolicy: "MANAGED_SECURITY_HEADERS",
+	}
+}
+
+// DefaultPrivateSignedContentProps returns defaults for private content using signed URLs/cookies
+func DefaultPrivateSignedContentProps() CloudFrontProperties {
+	return CloudFrontProperties{
+		Comment:     "Private content with signed URLs/cookies",
+		Enabled:     true,
+		PriceClass:  "ALL",
+		HttpVersion: "HTTP2_AND_3",
+		EnableIPv6:  true,
+
+		OriginType:            "S3",
+		S3BucketName:          "", // completar nombre del bucket
+		ViewerProtocolPolicy:  "REDIRECT_TO_HTTPS",
+		AllowedMethods:        []string{"GET", "HEAD", "OPTIONS"},
+		CachedMethods:         []string{"GET", "HEAD"},
+		CompressResponse:      true,
+		CachePolicy:           "MANAGED_CACHING_OPTIMIZED",
+		OriginRequestPolicy:   "MANAGED_ALL_VIEWER",
+		ResponseHeadersPolicy: "MANAGED_SECURITY_HEADERS",
+
+		// El consumidor debe configurar TrustedSigners o TrustedKeyGroups
+		TrustedSigners:   []string{},
+		TrustedKeyGroups: []string{},
+	}
+}
