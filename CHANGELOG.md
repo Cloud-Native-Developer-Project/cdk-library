@@ -7,17 +7,18 @@ y este proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
-## [0.2.0] - 2025-09-19
+## [0.2.0] - 2025-09-22
 
 ### Added
 
-- 🏗️ Constructo **API Gateway**:
-  - Creación de APIs REST
-  - Configuración de recursos y métodos
-  - Soporte para CORS
-  - Definición de stages (`dev`, `prod`)
-  - Logs y métricas en CloudWatch
-  - Configuración de throttling básico
+- 🏗️ Constructo **Cloudfront**:
+  - Soporte para múltiples orígenes (S3, S3 Website, HTTP, ALB)
+  - Configuración de caching avanzado (cache policies, response headers, request policies)
+  - SSL/TLS con certificados de ACM
+  - Restricciones geográficas
+  - Integración con WAF
+  - Edge Functions (Lambda\@Edge, Function)
+  - Logging y métricas avanzadas
 
 ### Changed
 

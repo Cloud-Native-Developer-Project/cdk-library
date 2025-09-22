@@ -17,20 +17,23 @@ El objetivo es ofrecer **constructos de alto nivel** que implementen buenas prá
   - Transfer Acceleration y CORS
   - Hosting para sitios estáticos
 
-- **API Gateway** → API REST escalable con buenas prácticas:
-  - Definición de recursos y métodos
-  - Soporte para CORS
-  - Stages (`dev`, `prod`)
-  - Logs y métricas en CloudWatch
-  - Throttling básico
+- **CloudFront** → Distribución global con seguridad y caching optimizado:
+
+  - Soporte para múltiples orígenes (S3, S3 Website, HTTP, ALB)
+  - Configuración de caching avanzado (cache policies, response headers, request policies)
+  - SSL/TLS con certificados de ACM
+  - Restricciones geográficas
+  - Integración con WAF
+  - Edge Functions (Lambda\@Edge, Function)
+  - Logging y métricas avanzadas
 
 ---
 
 ## 🛠️ Roadmap
 
 - [x] Constructo `S3`
-- [x] Constructo `API Gateway`
-- [ ] Constructo `Lambda` (integración con API Gateway)
+- [x] Constructo `CloudFront`
+- [ ] Constructo `Lambda` (integración con CloudFront u orígenes personalizados)
 - [ ] Constructo `VPC` con subnets, NAT y seguridad integrada
 - [ ] Constructo `Aurora Serverless v2` con monitoreo automático
 
@@ -39,3 +42,5 @@ El objetivo es ofrecer **constructos de alto nivel** que implementen buenas prá
 ## 📢 Cambios
 
 Este proyecto mantiene un historial de versiones en el archivo [CHANGELOG.md](./CHANGELOG.md), siguiendo el formato [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y la convención de [Semantic Versioning](https://semver.org/lang/es/).
+
+---
