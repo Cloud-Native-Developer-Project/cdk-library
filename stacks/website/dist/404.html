@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Página de error 404 para sitio web estático desplegado con AWS CDK">
+    <title>Error 404 | Página No Encontrada</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 60px 40px;
+            text-align: center;
+            animation: fadeIn 0.8s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 30px;
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%); /* Color invertido para contraste */
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 64px; /* Aumentado para el 404 */
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Estilo específico para el número de error */
+        .error-code {
+            font-size: 5rem;
+            color: #764ba2;
+            font-weight: 900;
+            margin-bottom: 5px;
+            line-height: 1;
+        }
+
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            color: #2d3748;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: #718096;
+            margin-bottom: 40px;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 30px;
+            margin: 50px 0;
+            text-align: left;
+        }
+
+        .feature {
+            padding: 25px;
+            background: #f7fafc;
+            border-radius: 12px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .feature:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 15px;
+        }
+
+        .feature h3 {
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            color: #2d3748;
+        }
+
+        .feature p {
+            font-size: 0.9rem;
+            color: #718096;
+            line-height: 1.5;
+        }
+
+        .tech-stack {
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 2px solid #e2e8f0;
+        }
+
+        .tech-stack h2 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: #2d3748;
+        }
+
+        .tech-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: transform 0.2s ease;
+        }
+
+        .badge:hover {
+            transform: scale(1.05);
+        }
+
+        .cta-button {
+            display: inline-block;
+            margin-top: 30px;
+            padding: 15px 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 30px rgba(102, 126, 234, 0.6);
+        }
+        
+        .home-button { /* Nuevo estilo para botón secundario */
+            display: inline-block;
+            margin-top: 15px;
+            padding: 10px 25px;
+            background: #f7fafc;
+            color: #764ba2;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            border: 2px solid #764ba2;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+        
+        .home-button:hover {
+            background: #764ba2;
+            color: white;
+        }
+
+
+        .footer {
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 2px solid #e2e8f0;
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 40px 25px;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .error-code {
+                font-size: 4rem;
+            }
+
+            .features {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <span class="error-code">404</span>
+        </div>
+        
+        <h1>¡Página No Encontrada!</h1>
+        <p class="subtitle">Parece que esta ruta no existe en nuestro S3 Bucket / Distribución de CloudFront.</p>
+
+        <p style="font-size: 1.1rem; color: #555; margin-bottom: 20px;">
+            El recurso que buscas ha sido **eliminado**, **movido** o **nunca existió**. 
+            Nuestra Infraestructura como Código (IaC) no pudo encontrar la página.
+        </p>
+
+        <div class="features" style="margin: 30px 0;">
+            <div class="feature">
+                <div class="feature-icon">🔍</div>
+                <h3>Verifica la URL</h3>
+                <p>Asegúrate de que la dirección que escribiste es correcta y que no hay errores tipográficos.</p>
+            </div>
+            
+            <div class="feature">
+                <div class="feature-icon">🏠</div>
+                <h3>Volver a la Base</h3>
+                <p>Regresa a la página de inicio para navegar desde un punto seguro.</p>
+            </div>
+        </div>
+
+        <a href="/" class="cta-button">Ir a la Página de Inicio</a>
+        <a href="javascript:history.back()" class="home-button">← Regresar</a>
+
+
+        <div class="tech-stack" style="margin-top: 30px; padding-top: 20px;">
+            <h2>Stack de Despliegue (Diagnóstico)</h2>
+            <div class="tech-badges">
+                <span class="badge">Error de Enrutamiento</span>
+                <span class="badge">S3 Falta de Objeto</span>
+                <span class="badge">CloudFront Miss</span>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Desplegado automáticamente con AWS CDK v2</p>
+            <p>© 2025 - Infraestructura como Código</p>
+        </div>
+    </div>
+
+    <script>
+        console.error('🛑 ERROR 404: Objeto no encontrado en el bucket S3');
+        console.warn('⚡ CloudFront no pudo servir el recurso solicitado');
+        
+        // Puedes agregar una animación de sacudida al 404 para darle un toque más dinámico
+        const logo = document.querySelector('.logo');
+        logo.addEventListener('click', () => {
+            logo.style.animation = 'shake 0.5s';
+            setTimeout(() => {
+                logo.style.animation = 'none';
+            }, 500);
+        });
+        
+        // Definición de la animación de sacudida (simulación de un error)
+        const styleSheet = document.createElement('style');
+        styleSheet.type = 'text/css';
+        styleSheet.innerText = `
+            @keyframes shake {
+                0% { transform: translate(1px, 1px) rotate(0deg); }
+                10% { transform: translate(-1px, -2px) rotate(-1deg); }
+                20% { transform: translate(-3px, 0px) rotate(1deg); }
+                30% { transform: translate(3px, 2px) rotate(0deg); }
+                40% { transform: translate(1px, -1px) rotate(1deg); }
+                50% { transform: translate(-1px, 2px) rotate(-1deg); }
+                60% { transform: translate(-3px, 1px) rotate(0deg); }
+                70% { transform: translate(3px, 1px) rotate(-1deg); }
+                80% { transform: translate(-1px, -1px) rotate(1deg); }
+                90% { transform: translate(1px, 2px) rotate(0deg); }
+                100% { transform: translate(1px, -2px) rotate(-1deg); }
+            }
+        `;
+        document.head.appendChild(styleSheet);
+    </script>
+</body>
+</html>

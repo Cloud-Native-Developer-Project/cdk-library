@@ -506,7 +506,7 @@ func GetStaticWebsiteProperties() S3Properties {
 		LifecycleRules: []*awss3.LifecycleRule{
 			{
 				Id:                          jsii.String("WebsiteCleanup"),
-				NoncurrentVersionExpiration: awscdk.Duration_Minutes(jsii.Number(30)),
+				NoncurrentVersionExpiration: awscdk.Duration_Minutes(jsii.Number(1)),
 			},
 		},
 
@@ -557,7 +557,7 @@ func GetCloudFrontOriginProperties() S3Properties {
 		LifecycleRules: []*awss3.LifecycleRule{
 			{
 				Id:                          jsii.String("WebContentCleanup"),
-				NoncurrentVersionExpiration: awscdk.Duration_Minutes(jsii.Number(30)),
+				NoncurrentVersionExpiration: awscdk.Duration_Days(jsii.Number(1)),
 			},
 		},
 
@@ -690,7 +690,7 @@ func GetBackupProperties() S3Properties {
 					},
 				},
 				// Backup retention policy
-				Expiration: awscdk.Duration_Days(jsii.Number(2555)),
+				Expiration: awscdk.Duration_Days(jsii.Number(10)),
 			},
 		},
 
@@ -801,7 +801,7 @@ func GetDevelopmentProperties() S3Properties {
 		LifecycleRules: []*awss3.LifecycleRule{
 			{
 				Id:         jsii.String("DevCleanup"),
-				Expiration: awscdk.Duration_Days(jsii.Number(30)), // Auto-cleanup after 30 days
+				Expiration: awscdk.Duration_Days(jsii.Number(1)), // Auto-cleanup after 30 days
 			},
 		},
 

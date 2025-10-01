@@ -1,6 +1,8 @@
 package cloudfront
 
 import (
+	"strings"
+
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awscertificatemanager"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awscloudfront"
@@ -31,8 +33,8 @@ type CloudFrontProperties struct {
 	OriginShieldRegion string // Origin Shield region (required if OriginShield is true)
 
 	// S3 Origin Specific (when OriginType is "S3")
-	S3BucketName           string // S3 bucket name for S3 origins
-	UseOriginAccessControl bool   // Use OAC instead of OAI (recommended)
+	S3BucketName string        // S3 bucket name for S3 origins
+	S3Bucket     awss3.IBucket // Direct bucket reference (takes precedence over S3BucketName)
 
 	// HTTP/Custom Origin Specific
 	OriginProtocolPolicy   string   // "HTTP_ONLY", "HTTPS_ONLY", "MATCH_VIEWER"
@@ -127,6 +129,7 @@ type LambdaEdgeConfig struct {
 // BehaviorConfig defines additional cache behavior configuration
 type BehaviorConfig struct {
 	PathPattern           string   // Path pattern to match (e.g., "/api/*", "*.jpg")
+	UseDefaultOrigin      bool     // Set to true to reuse default origin
 	OriginType            string   // Override origin type for this path
 	OriginDomainName      string   // Override origin domain for this path
 	CachePolicy           string   // Override cache policy for this path
@@ -143,7 +146,6 @@ type BehaviorConfig struct {
 // NewDistribution creates a new CloudFront distribution with comprehensive configuration options
 // This function applies AWS best practices for performance, security, and cost optimization
 func NewDistribution(scope constructs.Construct, id string, props CloudFrontProperties) awscloudfront.Distribution {
-	// Initialize distribution properties with basic configuration
 	distributionProps := &awscloudfront.DistributionProps{
 		Comment:           jsii.String(props.Comment),
 		Enabled:           jsii.Bool(props.Enabled),
@@ -154,37 +156,26 @@ func NewDistribution(scope constructs.Construct, id string, props CloudFrontProp
 		EnableIpv6:        jsii.Bool(props.EnableIPv6),
 	}
 
-	// Configure default behavior (required)
-	distributionProps.DefaultBehavior = configureDefaultBehavior(props)
+	// Configure default behavior and capture the origin
+	defaultBehavior, defaultOrigin := configureDefaultBehavior(scope, props)
+	distributionProps.DefaultBehavior = defaultBehavior
 
-	// Configure SSL/TLS settings
-	configureSSLSettings(distributionProps, props)
-
-	// Configure security settings
+	configureSSLSettings(scope, distributionProps, props)
 	configureSecurity(distributionProps, props)
-
-	// Configure error pages
 	configureErrorPages(distributionProps, props)
-
-	// Configure logging
-	configureLogging(distributionProps, props)
-
-	// Configure monitoring
+	configureLogging(scope, distributionProps, props)
 	configureMonitoring(distributionProps, props)
 
-	// Configure additional behaviors
-	configureAdditionalBehaviors(distributionProps, props)
+	// Pass defaultOrigin to additional behaviors
+	configureAdditionalBehaviors(scope, distributionProps, props, defaultOrigin)
 
-	// Create and return the distribution
 	distribution := awscloudfront.NewDistribution(scope, jsii.String(id), distributionProps)
-
 	return distribution
 }
 
 // configureDefaultBehavior sets up the default cache behavior
-func configureDefaultBehavior(props CloudFrontProperties) *awscloudfront.BehaviorOptions {
-	// Create origin based on type
-	origin := createOrigin(props)
+func configureDefaultBehavior(scope constructs.Construct, props CloudFrontProperties) (*awscloudfront.BehaviorOptions, awscloudfront.IOrigin) {
+	origin := createOrigin(scope, "DefaultOrigin", props)
 
 	behaviorOptions := &awscloudfront.BehaviorOptions{
 		Origin:                origin,
@@ -192,7 +183,7 @@ func configureDefaultBehavior(props CloudFrontProperties) *awscloudfront.Behavio
 		AllowedMethods:        configureAllowedMethods(props.AllowedMethods),
 		CachedMethods:         configureCachedMethods(props.CachedMethods),
 		Compress:              jsii.Bool(props.CompressResponse),
-		CachePolicy:           configureCachePolicy(props),
+		CachePolicy:           configureCachePolicy(scope, props),
 		OriginRequestPolicy:   configureOriginRequestPolicy(props.OriginRequestPolicy),
 		ResponseHeadersPolicy: configureResponseHeadersPolicy(props.ResponseHeadersPolicy),
 	}
@@ -214,18 +205,20 @@ func configureDefaultBehavior(props CloudFrontProperties) *awscloudfront.Behavio
 	}
 
 	// Configure edge functions
-	configureEdgeFunctions(behaviorOptions, props)
+	configureEdgeFunctions(scope, behaviorOptions, props)
 
-	return behaviorOptions
+	return behaviorOptions, origin
 }
 
 // createOrigin creates the appropriate origin based on the configuration
-func createOrigin(props CloudFrontProperties) awscloudfront.IOrigin {
+func createOrigin(scope constructs.Construct, idPrefix string, props CloudFrontProperties) awscloudfront.IOrigin {
 	switch props.OriginType {
 	case "S3":
-		return createS3Origin(props)
+		// 🛑 CORRECCIÓN: Pasar el idPrefix.
+		return createS3Origin(scope, idPrefix, props)
 	case "S3_WEBSITE":
-		return createS3WebsiteOrigin(props)
+		// 🛑 CORRECCIÓN: Pasar el idPrefix.
+		return createS3WebsiteOrigin(scope, idPrefix, props)
 	case "HTTP", "HTTPS":
 		return createHttpOrigin(props)
 	case "LOAD_BALANCER":
@@ -236,45 +229,53 @@ func createOrigin(props CloudFrontProperties) awscloudfront.IOrigin {
 	}
 }
 
-// createS3Origin creates an S3 bucket origin with OAC
-func createS3Origin(props CloudFrontProperties) awscloudfront.IOrigin {
-	// Create S3 origin configuration
-	s3OriginProps := &awscloudfrontorigins.S3OriginProps{
+func createS3Origin(scope constructs.Construct, idPrefix string, props CloudFrontProperties) awscloudfront.IOrigin {
+	var bucket awss3.IBucket
+
+	// Use direct bucket reference if provided, otherwise import by name
+	if props.S3Bucket != nil {
+		bucket = props.S3Bucket
+	} else if props.S3BucketName != "" {
+		originId := idPrefix + "-" + props.S3BucketName
+		bucket = awss3.Bucket_FromBucketName(scope, jsii.String(originId), jsii.String(props.S3BucketName))
+	} else {
+		panic("Either S3Bucket or S3BucketName must be provided for S3 origin")
+	}
+
+	s3OriginProps := &awscloudfrontorigins.S3BucketOriginWithOACProps{
 		OriginPath: jsii.String(props.OriginPath),
 	}
 
-	// Configure Origin Shield if enabled
 	if props.OriginShield && props.OriginShieldRegion != "" {
 		s3OriginProps.OriginShieldEnabled = jsii.Bool(true)
 		s3OriginProps.OriginShieldRegion = jsii.String(props.OriginShieldRegion)
 	}
 
-	// Use OAC if specified (recommended)
-	if props.UseOriginAccessControl {
-		// OAC configuration will be handled by the S3Origin construct
-		// The actual S3 bucket policy needs to be configured separately
-	}
-
-	// Create S3 bucket reference
-	bucket := awss3.Bucket_FromBucketName(nil, jsii.String("OriginBucket"), jsii.String(props.S3BucketName))
-
-	return awscloudfrontorigins.NewS3Origin(bucket, s3OriginProps)
+	return awscloudfrontorigins.S3BucketOrigin_WithOriginAccessControl(bucket, s3OriginProps)
 }
 
 // createS3WebsiteOrigin creates an S3 website origin
-func createS3WebsiteOrigin(props CloudFrontProperties) awscloudfront.IOrigin {
+func createS3WebsiteOrigin(scope constructs.Construct, idPrefix string, props CloudFrontProperties) awscloudfront.IOrigin {
+	var bucket awss3.IBucket
+
+	// Use direct bucket reference if provided, otherwise import by name
+	if props.S3Bucket != nil {
+		bucket = props.S3Bucket
+	} else if props.S3BucketName != "" {
+		originId := idPrefix + "-" + props.S3BucketName
+		bucket = awss3.Bucket_FromBucketName(scope, jsii.String(originId), jsii.String(props.S3BucketName))
+	} else {
+		panic("Either S3Bucket or S3BucketName must be provided for S3 website origin")
+	}
+
 	s3WebsiteOriginProps := &awscloudfrontorigins.S3StaticWebsiteOriginProps{
 		OriginPath: jsii.String(props.OriginPath),
 	}
 
-	// Configure Origin Shield if enabled
 	if props.OriginShield && props.OriginShieldRegion != "" {
 		s3WebsiteOriginProps.OriginShieldEnabled = jsii.Bool(true)
 		s3WebsiteOriginProps.OriginShieldRegion = jsii.String(props.OriginShieldRegion)
 	}
-
-	// Create S3 bucket reference
-	bucket := awss3.Bucket_FromBucketName(nil, jsii.String("OriginWebsiteBucket"), jsii.String(props.S3BucketName))
 
 	return awscloudfrontorigins.NewS3StaticWebsiteOrigin(bucket, s3WebsiteOriginProps)
 }
@@ -311,11 +312,11 @@ func createLoadBalancerOrigin(props CloudFrontProperties) awscloudfront.IOrigin 
 }
 
 // configureSSLSettings configures SSL/TLS settings for the distribution
-func configureSSLSettings(distributionProps *awscloudfront.DistributionProps, props CloudFrontProperties) {
+func configureSSLSettings(scope constructs.Construct, distributionProps *awscloudfront.DistributionProps, props CloudFrontProperties) {
 	if props.CertificateArn != "" {
 		// Import existing certificate
 		certificate := awscertificatemanager.Certificate_FromCertificateArn(
-			nil, jsii.String("Certificate"), jsii.String(props.CertificateArn))
+			scope, jsii.String("Certificate"), jsii.String(props.CertificateArn))
 		distributionProps.Certificate = certificate
 
 		// Set minimum protocol version
@@ -360,12 +361,12 @@ func configureErrorPages(distributionProps *awscloudfront.DistributionProps, pro
 }
 
 // configureLogging sets up access logging configuration
-func configureLogging(distributionProps *awscloudfront.DistributionProps, props CloudFrontProperties) {
+func configureLogging(scope constructs.Construct, distributionProps *awscloudfront.DistributionProps, props CloudFrontProperties) {
 	if props.EnableAccessLogging {
 		distributionProps.EnableLogging = jsii.Bool(true)
 
 		if props.LoggingBucket != "" {
-			logBucket := awss3.Bucket_FromBucketName(nil, jsii.String("LogBucket"), jsii.String(props.LoggingBucket))
+			logBucket := awss3.Bucket_FromBucketName(scope, jsii.String("LogBucket"), jsii.String(props.LoggingBucket))
 			distributionProps.LogBucket = logBucket
 		}
 
@@ -385,12 +386,12 @@ func configureMonitoring(distributionProps *awscloudfront.DistributionProps, pro
 }
 
 // configureAdditionalBehaviors sets up additional cache behaviors for path-based routing
-func configureAdditionalBehaviors(distributionProps *awscloudfront.DistributionProps, props CloudFrontProperties) {
+func configureAdditionalBehaviors(scope constructs.Construct, distributionProps *awscloudfront.DistributionProps, props CloudFrontProperties, defaultOrigin awscloudfront.IOrigin) {
 	if len(props.AdditionalBehaviors) > 0 {
 		additionalBehaviors := make(map[string]*awscloudfront.BehaviorOptions)
 
 		for _, behaviorConfig := range props.AdditionalBehaviors {
-			behaviorOptions := createBehaviorFromConfig(behaviorConfig, props)
+			behaviorOptions := createBehaviorFromConfig(scope, behaviorConfig, props, defaultOrigin) // ← Pasar defaultOrigin
 			additionalBehaviors[behaviorConfig.PathPattern] = behaviorOptions
 		}
 
@@ -399,17 +400,26 @@ func configureAdditionalBehaviors(distributionProps *awscloudfront.DistributionP
 }
 
 // createBehaviorFromConfig creates a behavior configuration from BehaviorConfig
-func createBehaviorFromConfig(config BehaviorConfig, defaultProps CloudFrontProperties) *awscloudfront.BehaviorOptions {
+func createBehaviorFromConfig(scope constructs.Construct, config BehaviorConfig, defaultProps CloudFrontProperties, defaultOrigin awscloudfront.IOrigin) *awscloudfront.BehaviorOptions {
+	var origin awscloudfront.IOrigin
 	// Create a temporary props object with overrides
 	tempProps := defaultProps
-	if config.OriginType != "" {
-		tempProps.OriginType = config.OriginType
-	}
-	if config.OriginDomainName != "" {
-		tempProps.OriginDomainName = config.OriginDomainName
-	}
+	// Reutilizar origen por defecto si está especificado
+	if config.UseDefaultOrigin {
+		origin = defaultOrigin
+	} else {
+		// Crear nuevo origen solo si es necesario
+		tempProps := defaultProps
+		if config.OriginType != "" {
+			tempProps.OriginType = config.OriginType
+		}
+		if config.OriginDomainName != "" {
+			tempProps.OriginDomainName = config.OriginDomainName
+		}
 
-	origin := createOrigin(tempProps)
+		behaviorOriginId := "BehaviorOrigin-" + sanitizeID(config.PathPattern)
+		origin = createOrigin(scope, behaviorOriginId, tempProps)
+	}
 
 	behaviorOptions := &awscloudfront.BehaviorOptions{
 		Origin:               origin,
@@ -422,7 +432,7 @@ func createBehaviorFromConfig(config BehaviorConfig, defaultProps CloudFrontProp
 	// Configure cache policy for this behavior
 	if config.CachePolicy != "" {
 		tempProps.CachePolicy = config.CachePolicy
-		behaviorOptions.CachePolicy = configureCachePolicy(tempProps)
+		behaviorOptions.CachePolicy = configureCachePolicy(scope, tempProps)
 	}
 
 	// Configure origin request policy for this behavior
@@ -439,7 +449,7 @@ func createBehaviorFromConfig(config BehaviorConfig, defaultProps CloudFrontProp
 }
 
 // configureEdgeFunctions sets up CloudFront Functions and Lambda@Edge
-func configureEdgeFunctions(behaviorOptions *awscloudfront.BehaviorOptions, props CloudFrontProperties) {
+func configureEdgeFunctions(scope constructs.Construct, behaviorOptions *awscloudfront.BehaviorOptions, props CloudFrontProperties) {
 	if !props.EnableEdgeFunctions {
 		return
 	}
@@ -467,7 +477,7 @@ func configureEdgeFunctions(behaviorOptions *awscloudfront.BehaviorOptions, prop
 
 		for _, lambdaConfig := range props.LambdaEdgeFunctions {
 			// Create Lambda version from ARN
-			functionVersion := awslambda.Version_FromVersionArn(nil, jsii.String("LambdaEdgeVersion"), jsii.String(lambdaConfig.FunctionArn))
+			functionVersion := awslambda.Version_FromVersionArn(scope, jsii.String("LambdaEdgeVersion"), jsii.String(lambdaConfig.FunctionArn))
 
 			edgeLambda := &awscloudfront.EdgeLambda{
 				EventType:       configureLambdaEventType(lambdaConfig.EventType),
@@ -577,7 +587,7 @@ func configureCachedMethods(methods []string) awscloudfront.CachedMethods {
 	return awscloudfront.CachedMethods_CACHE_GET_HEAD()
 }
 
-func configureCachePolicy(props CloudFrontProperties) awscloudfront.ICachePolicy {
+func configureCachePolicy(scope constructs.Construct, props CloudFrontProperties) awscloudfront.ICachePolicy {
 	switch props.CachePolicy {
 	case "MANAGED_CACHING_OPTIMIZED":
 		return awscloudfront.CachePolicy_CACHING_OPTIMIZED()
@@ -587,13 +597,13 @@ func configureCachePolicy(props CloudFrontProperties) awscloudfront.ICachePolicy
 		return awscloudfront.CachePolicy_AMPLIFY()
 	case "CUSTOM":
 		// Create custom cache policy
-		return createCustomCachePolicy(props)
+		return createCustomCachePolicy(scope, props)
 	default:
 		return awscloudfront.CachePolicy_CACHING_OPTIMIZED()
 	}
 }
 
-func createCustomCachePolicy(props CloudFrontProperties) awscloudfront.ICachePolicy {
+func createCustomCachePolicy(scope constructs.Construct, props CloudFrontProperties) awscloudfront.ICachePolicy {
 	// Create custom cache policy with user-defined parameters
 	cachePolicyProps := &awscloudfront.CachePolicyProps{
 		CachePolicyName: jsii.String(getStringOrDefault(props.CustomCachePolicyName, "CustomCachePolicy")),
@@ -631,7 +641,7 @@ func createCustomCachePolicy(props CloudFrontProperties) awscloudfront.ICachePol
 	cachePolicyProps.EnableAcceptEncodingGzip = jsii.Bool(true)
 	cachePolicyProps.EnableAcceptEncodingBrotli = jsii.Bool(true)
 
-	return awscloudfront.NewCachePolicy(nil, jsii.String("CustomCachePolicy"), cachePolicyProps)
+	return awscloudfront.NewCachePolicy(scope, jsii.String("CustomCachePolicy"), cachePolicyProps)
 }
 
 // Helper function for int32 defaults
@@ -851,16 +861,23 @@ func DefaultS3PrivateOACProps() CloudFrontProperties {
 		HttpVersion: "HTTP2_AND_3",
 		EnableIPv6:  true,
 
-		OriginType:             "S3",
-		S3BucketName:           "", // completar nombre del bucket
-		UseOriginAccessControl: true,
-		ViewerProtocolPolicy:   "REDIRECT_TO_HTTPS",
-		AllowedMethods:         []string{"GET", "HEAD", "OPTIONS"},
-		CachedMethods:          []string{"GET", "HEAD"},
-		CompressResponse:       true,
-		CachePolicy:            "MANAGED_CACHING_OPTIMIZED",
-		OriginRequestPolicy:    "MANAGED_ALL_VIEWER",
-		ResponseHeadersPolicy:  "MANAGED_SECURITY_HEADERS",
+		OriginType:            "S3",
+		S3BucketName:          "", // completar nombre del bucket
+		DefaultRootObject:     "index.html",
+		ViewerProtocolPolicy:  "REDIRECT_TO_HTTPS",
+		AllowedMethods:        []string{"GET", "HEAD", "OPTIONS"},
+		CachedMethods:         []string{"GET", "HEAD"},
+		CompressResponse:      true,
+		CachePolicy:           "MANAGED_CACHING_OPTIMIZED",
+		OriginRequestPolicy:   "MANAGED_ALL_VIEWER",
+		ResponseHeadersPolicy: "MANAGED_SECURITY_HEADERS",
+		EnableErrorPages:      true,
+
+		ErrorPageConfigs: []ErrorPageConfig{
+			// OAC a menudo devuelve 403 para objetos que faltan. Debemos capturarlo.
+			{ErrorCode: 403, ResponseCode: 200, ResponsePagePath: "/index.html", ErrorCachingMinTTL: 0},
+			{ErrorCode: 404, ResponseCode: 200, ResponsePagePath: "/index.html", ErrorCachingMinTTL: 0},
+		},
 	}
 }
 
@@ -956,4 +973,12 @@ func DefaultPrivateSignedContentProps() CloudFrontProperties {
 		TrustedSigners:   []string{},
 		TrustedKeyGroups: []string{},
 	}
+}
+
+// sanitizeID limpia una cadena para usarla como ID de Constructo (reemplaza caracteres no permitidos)
+func sanitizeID(s string) string {
+	s = strings.ReplaceAll(s, "/*", "All")
+	s = strings.ReplaceAll(s, "*", "Any")
+	s = strings.ReplaceAll(s, "/", "-")
+	return s
 }
