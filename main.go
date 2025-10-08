@@ -2,6 +2,7 @@ package main
 
 import (
 	stacks "cdk-library/stacks/website"
+	"fmt"
 	"os"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
@@ -13,15 +14,26 @@ func main() {
 
 	app := awscdk.NewApp(nil)
 
-	// Get AWS Account and Region from environment or use defaults
+	// Get AWS Account and Region from environment
 	account := os.Getenv("CDK_DEFAULT_ACCOUNT")
 	region := os.Getenv("CDK_DEFAULT_REGION")
+
+	// Validate account is set
+	if account == "" {
+		fmt.Println("Warning: CDK_DEFAULT_ACCOUNT not set, using default AWS credentials")
+		account = "default"
+	}
+	if region == "" {
+		fmt.Println("Warning: CDK_DEFAULT_REGION not set, defaulting to us-east-1")
+		region = "us-east-1"
+	}
+
+	// Create unique but readable bucket name
+	// S3 bucket names must be globally unique and lowercase
 
 	// =============================================================================
 	// DEVELOPMENT ENVIRONMENT
 	// =============================================================================
-	// For testing and development purposes
-	// Uses cost-optimized settings and automatic cleanup
 	stacks.NewStaticWebsiteStack(app, "DevStaticWebsite", &stacks.StaticWebsiteStackProps{
 		StackProps: awscdk.StackProps{
 			Env: &awscdk.Environment{
@@ -29,60 +41,20 @@ func main() {
 				Region:  jsii.String(region),
 			},
 			StackName:   jsii.String("dev-static-website"),
-			Description: jsii.String("Development static website infrastructure with S3 + CloudFront"),
+			Description: jsii.String("Development static website with S3 + CloudFront + OAC"),
 			Tags: &map[string]*string{
 				"Environment": jsii.String("Development"),
 				"Project":     jsii.String("StaticWebsite"),
 				"ManagedBy":   jsii.String("CDK"),
+				"CostCenter":  jsii.String("Engineering"),
 			},
 		},
-		BucketName:  "dev-my-website-bucket-" + account, // Make bucket name unique
+		BucketName:  *jsii.String(fmt.Sprintf("dev-static-website-%s", account)),
 		WebsiteName: "my-website-dev",
 		SourcePath:  "stacks/website/dist",
-		PriceClass:  "100", // Cost-optimized (US, Canada, Europe)
-		EnableWAF:   false, // Disable WAF for development
+		PriceClass:  "100",
+		EnableWAF:   false,
 	})
-
-	// =============================================================================
-	// PRODUCTION ENVIRONMENT (COMMENTED OUT BY DEFAULT)
-	// =============================================================================
-	// Uncomment and configure when ready for production deployment
-	/*
-		stacks.NewStaticWebsiteStack(app, "ProdStaticWebsite", &stacks.StaticWebsiteStackProps{
-			StackProps: awscdk.StackProps{
-				Env: &awscdk.Environment{
-					Account: jsii.String(account),
-					Region:  jsii.String("us-east-1"), // MUST be us-east-1 for CloudFront certificates
-				},
-				StackName:   jsii.String("prod-static-website"),
-				Description: jsii.String("Production static website infrastructure"),
-				Tags: &map[string]*string{
-					"Environment": jsii.String("Production"),
-					"Project":     jsii.String("StaticWebsite"),
-					"ManagedBy":   jsii.String("CDK"),
-				},
-			},
-			BucketName:  "prod-my-website-bucket-" + account,
-			WebsiteName: "my-website-prod",
-			SourcePath:  "./stacks/website/dist",
-			PriceClass:  "ALL", // Global distribution
-
-			// Custom Domain Configuration
-			// Prerequisites:
-			// 1. Create ACM certificate in us-east-1 for your domain
-			// 2. Validate the certificate
-			// 3. Update Route53 or your DNS provider with CloudFront domain
-			DomainNames:    []string{"www.example.com", "example.com"},
-			CertificateArn: "arn:aws:acm:us-east-1:970547363172:certificate/xxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-
-			// AWS WAF Configuration (optional but recommended for production)
-			// Prerequisites:
-			// 1. Create WAF WebACL in us-east-1 (CloudFront is global)
-			// 2. Configure WAF rules (rate limiting, SQL injection, XSS, etc.)
-			EnableWAF: true,
-			WebAclArn: "arn:aws:wafv2:us-east-1:970547363172:global/webacl/xxxxx/xxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-		})
-	*/
 
 	app.Synth(nil)
 }

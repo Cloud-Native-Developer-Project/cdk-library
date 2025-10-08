@@ -121,6 +121,7 @@ func configureSecurity(bucketProps *awss3.BucketProps, props S3Properties) {
 			bucketProps.MinimumTLSVersion = jsii.Number(props.MinimumTLSVersion)
 		}
 	}
+	bucketProps.ObjectOwnership = awss3.ObjectOwnership_BUCKET_OWNER_ENFORCED
 
 }
 
