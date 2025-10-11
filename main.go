@@ -7,6 +7,8 @@ import (
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/jsii-runtime-go"
+	// Importa WAF si deseas habilitar protección
+	// waf "cdk-library/constructs/WAF"
 )
 
 func main() {
@@ -53,7 +55,16 @@ func main() {
 		WebsiteName: "my-website-dev",
 		SourcePath:  "stacks/website/dist",
 		PriceClass:  "100",
-		EnableWAF:   false,
+
+		// WAF Configuration (Optional)
+		EnableWAF: true, // Set to true to enable WAF protection
+
+		// WAF Profile Options (uncomment waf import above):
+		// WafProfileType: waf.ProfileTypeWebApplication, // OWASP Top 10, XSS, SQL injection, rate limit 2000 req/5min
+		// WafProfileType: waf.ProfileTypeAPIProtection,  // Rate limit 10000 req/5min, SQL injection protection
+		// WafProfileType: waf.ProfileTypeBotControl,     // Advanced bot detection, rate limit 5000 req/5min
+
+		// See stacks/website/USAGE_EXAMPLES.md for detailed WAF configuration examples
 	})
 
 	app.Synth(nil)

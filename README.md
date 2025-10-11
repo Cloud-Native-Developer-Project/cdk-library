@@ -25,63 +25,154 @@ Ver [CHANGELOG.md](./CHANGELOG.md#030---2025-10-09) para detalles de la arquitec
 
 ## 📦 Constructos disponibles
 
-- **S3** → Bucket de Amazon S3 con configuración extendida:
+### **S3** → 6 estrategias especializadas (**Factory + Strategy Pattern** ✨)
 
-  - Seguridad (SSL, cifrado, versionado, bloqueo de acceso público, Object Lock)
-  - Optimización de costos (tiering, reglas de ciclo de vida)
-  - Replicación cross-region
-  - Logs, inventarios y métricas
-  - Transfer Acceleration y CORS
-  - Hosting para sitios estáticos
+Buckets optimizados para casos de uso específicos con seguridad, costos y performance balanceados:
 
-- **CloudFront** → Distribución global con seguridad y caching optimizado (**Factory + Strategy Pattern** ✨):
+| Estrategia | Uso Principal | Seguridad | Retención |
+|------------|---------------|-----------|-----------|
+| **CloudFront Origin** | Sitios estáticos, SPAs | KMS, TLS 1.2 | 1 año |
+| **Data Lake** | Analytics, Big Data | KMS, Versioning | Multi-tier |
+| **Backup** | Disaster Recovery | KMS, Object Lock (GOVERNANCE) | 10 años |
+| **Media Streaming** | Video/Audio CDN | S3_MANAGED, CORS | 1 año |
+| **Enterprise** | PII, Compliance | KMS, Object Lock (COMPLIANCE), TLS 1.3 | 7 años |
+| **Development** | Dev/Test | S3_MANAGED, Auto-delete | 30 días |
 
-  - **Arquitectura modular**: Factory Pattern para selección de estrategia según tipo de origen
-  - **Estrategias implementadas**:
-    - `S3CloudFrontStrategy`: Origin Access Control (OAC), cache optimizado, security headers
-  - **Estrategias futuras**: API Gateway, ALB, Custom Origins
-  - **Features**:
-    - Configuración de caching avanzado (cache policies, response headers, request policies)
-    - SSL/TLS con certificados de ACM
-    - Restricciones geográficas
-    - Integración con WAF
-    - SPA support (error redirects a index.html)
-    - Auto-configuración de bucket policies para OAC
+**Uso:**
+```go
+bucket := s3.NewSimpleStorageServiceFactory(stack, "WebsiteBucket",
+    s3.SimpleStorageServiceFactoryProps{
+        BucketType: s3.BucketTypeCloudfrontOAC,
+        BucketName: "my-website-prod",
+    })
+```
 
-  **Uso:**
-  ```go
-  distribution := cloudfront.NewDistributionV2(stack, "Distribution",
-      cloudfront.CloudFrontPropertiesV2{
-          OriginType: cloudfront.OriginTypeS3,
-          S3Bucket:   bucket,
-          AutoConfigureS3BucketPolicy: true,
-      })
-  ```
+Ver [constructs/S3/README.md](./constructs/S3/README.md) para documentación completa.
+
+---
+
+### **CloudFront** → Distribución global con seguridad y caching (**Factory + Strategy Pattern** ✨)
+
+Estrategias optimizadas por tipo de origen:
+
+- **S3 Strategy**: Origin Access Control (OAC), cache optimizado, security headers
+- **Futuras**: API Gateway, ALB, Custom HTTP Origins
+
+**Features**: Cache policies, SSL/TLS (ACM), geo-restrictions, WAF integration, SPA support
+
+**Uso:**
+```go
+distribution := cloudfront.NewDistributionV2(stack, "CDN",
+    cloudfront.CloudFrontPropertiesV2{
+        OriginType: cloudfront.OriginTypeS3,
+        S3Bucket:   bucket,
+        AutoConfigureS3BucketPolicy: true,
+    })
+```
+
+Ver [constructs/CloudFront/README.md](./constructs/CloudFront/README.md) para detalles.
+
+---
+
+### **WAF** → Web Application Firewall con reglas gestionadas (**Factory + Strategy Pattern** ✨)
+
+Protección contra amenazas comunes con estrategias pre-configuradas:
+
+- **Web Application Strategy**: OWASP Top 10, rate limiting (2000 req/5min), SQL injection, XSS
+- **API Strategy**: Rate limiting (10000 req/5min), token validation, bot protection
+- **OWASP Strategy**: Core Rule Set completo, protección contra vulnerabilidades conocidas
+
+**Features**: AWS Managed Rules, custom rules, CloudWatch metrics, geo-blocking
+
+**Uso:**
+```go
+webacl := waf.NewWebApplicationFirewallV2(stack, "WAF",
+    waf.WebApplicationFirewallFactoryProps{
+        WafType: waf.WafTypeWebApplication,
+        Scope:   waf.WafScopeCloudfront,
+        Name:    "my-app-waf",
+    })
+```
+
+Ver [constructs/WAF/README.md](./constructs/WAF/README.md) para casos de uso y reglas.
 
 ---
 
 ## 🛠️ Roadmap
 
 ### Fase 1: Arquitectura Foundation ✅
-- [x] ~~Constructo `S3` (Monolítico)~~
-- [x] **CloudFront con Factory + Strategy Pattern** (Caso piloto) ✨
+- [x] **CloudFront** → Factory + Strategy Pattern (Caso piloto)
+- [x] **S3** → 6 estrategias especializadas (CloudFront Origin, Data Lake, Backup, Media, Enterprise, Dev)
+- [x] **WAF** → 3 estrategias (Web Application, API, OWASP)
 
-### Fase 2: Refactoring & Patterns (En progreso)
-- [ ] **S3 Construct Refactoring** → Factory + Strategy Pattern
-  - Strategies: `CloudFrontOrigin`, `DataLake`, `Backup`, `MediaStreaming`, `Enterprise`, `Development`
-  - Eliminar helper functions monolíticas
-- [ ] **WAF Construct** → Factory + Strategy Pattern
-  - Strategies: `WebApplication`, `API`, `OWASP`, `Custom`
-  - Integración automática con CloudFront
+### Fase 2: Extensiones (En progreso)
+- [ ] **CloudFront Strategies adicionales**: API Gateway, ALB, Custom HTTP Origins
+- [ ] **Lambda Construct**: Factory + Strategy para casos de uso comunes
+- [ ] **API Gateway Construct**: REST/HTTP APIs con autenticación integrada
+- [ ] **DynamoDB Construct**: Estrategias para transaccional, analytics, time-series
 
-### Fase 3: Extensiones (Futuro)
-- [ ] CloudFront Strategies adicionales: `API Gateway`, `ALB`, `Custom HTTP`
-- [ ] Constructo `Lambda` con Factory Pattern
-- [ ] Constructo `VPC` con subnets, NAT y seguridad integrada
-- [ ] Constructo `Aurora Serverless v2` con monitoreo automático
-- [ ] Template/Scaffold para crear nuevos constructos siguiendo el patrón
+### Fase 3: Enterprise Features (Futuro)
+- [ ] **VPC Construct**: Subnets, NAT, security groups optimizados
+- [ ] **Aurora Serverless v2**: Auto-scaling con monitoreo avanzado
+- [ ] **ECS/Fargate**: Containers con service discovery y load balancing
+- [ ] **Template/Scaffold**: CLI para generar nuevos constructos con el patrón
 
-**Meta**: Todos los constructos nuevos seguirán el patrón Factory + Strategy a partir de la versión 0.3.0
+**Cobertura actual**: 10 estrategias implementadas | **Meta**: 95% de casos de uso AWS comunes
+
+---
+
+## 🎯 Casos de Uso Completos
+
+Esta librería está diseñada para implementar arquitecturas completas de AWS siguiendo best practices:
+
+### Stack 1: Static Website con CDN + WAF
+```go
+// Bucket S3 optimizado para CloudFront
+bucket := s3.NewSimpleStorageServiceFactory(stack, "WebsiteBucket",
+    s3.SimpleStorageServiceFactoryProps{
+        BucketType: s3.BucketTypeCloudfrontOAC,
+        BucketName: "my-website-prod",
+    })
+
+// WAF con protección OWASP
+webacl := waf.NewWebApplicationFirewallV2(stack, "WAF",
+    waf.WebApplicationFirewallFactoryProps{
+        WafType: waf.WafTypeWebApplication,
+        Scope:   waf.WafScopeCloudfront,
+        Name:    "website-waf",
+    })
+
+// CloudFront con S3 origin
+distribution := cloudfront.NewDistributionV2(stack, "CDN",
+    cloudfront.CloudFrontPropertiesV2{
+        OriginType: cloudfront.OriginTypeS3,
+        S3Bucket:   bucket,
+        WebACLId:   webacl.Arn(),
+        AutoConfigureS3BucketPolicy: true,
+    })
+```
+
+### Stack 2: Data Lake Analytics
+```go
+// Bucket optimizado para big data
+dataLake := s3.NewSimpleStorageServiceFactory(stack, "DataLake",
+    s3.SimpleStorageServiceFactoryProps{
+        BucketType: s3.BucketTypeDataLake,
+        BucketName: "analytics-datalake",
+    })
+// Integra con: Glue, Athena, EMR, Redshift Spectrum
+```
+
+### Stack 3: Enterprise Compliance Archive
+```go
+// Bucket con Object Lock COMPLIANCE (7 años)
+archive := s3.NewSimpleStorageServiceFactory(stack, "Archive",
+    s3.SimpleStorageServiceFactoryProps{
+        BucketType: s3.BucketTypeEnterprise,
+        BucketName: "financial-records",
+    })
+// Cumple: SOX, HIPAA, GDPR, PCI-DSS, SEC 17a-4
+```
 
 ---
 

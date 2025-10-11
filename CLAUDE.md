@@ -12,23 +12,99 @@ This is a **Go-based AWS CDK library** (`cdk-library`) that provides reusable, h
 
 ## Available Constructs
 
-### S3 Construct (`constructs/S3/s3.go`)
-Comprehensive S3 bucket construct with pre-configured templates for different use cases:
-- `GetDefaultProperties()` - Secure defaults
-- `GetEnterpriseDataProperties()` - Financial/PII data with compliance (KMS, Object Lock, 7-year retention)
-- `GetCloudFrontOriginProperties()` - **Recommended for static websites** (private bucket with OAC)
-- `GetDataLakeProperties()` - Analytics workloads with lifecycle policies
-- `GetBackupProperties()` - Backup/DR with retention and replication
-- `GetMediaStreamingProperties()` - Media/CDN origin
-- `GetDevelopmentProperties()` - Dev/test environments with auto-cleanup
+All constructs follow **Factory + Strategy pattern** for maximum extensibility and maintainability.
+
+### S3 Construct (`constructs/S3/`)
+**Architecture:** Factory + Strategy pattern (6 specialized strategies)
+
+**Entry Point:** `NewSimpleStorageServiceFactory(scope, id, props)`
+
+**Available Strategies:**
+- `BucketTypeCloudfrontOAC` → CloudFront origin with OAC (KMS, TLS 1.2, versioning)
+- `BucketTypeDataLake` → Big data analytics (multi-tier lifecycle: raw-data, processed-data)
+- `BucketTypeBackup` → Disaster recovery (Object Lock GOVERNANCE, 10-year retention)
+- `BucketTypeMediaStreaming` → Video/audio streaming (S3_MANAGED, CORS, low latency)
+- `BucketTypeEnterprise` → Maximum security (Object Lock COMPLIANCE, TLS 1.3, 7-year immutable)
+- `BucketTypeDevelopment` → Dev/test (auto-delete, 30-day expiration, minimal cost)
+
+**Files:**
+- `simple_storage_service_factory.go` - Factory entry point
+- `simple_storage_service_contract.go` - Strategy interface
+- `simple_storage_service_cloudfront_origin.go` - CloudFront origin strategy
+- `simple_storage_service_data_lake.go` - Data lake strategy
+- `simple_storage_service_backup.go` - Backup strategy
+- `simple_storage_service_media_streaming.go` - Media streaming strategy
+- `simple_storage_service_enterprise.go` - Enterprise compliance strategy
+- `simple_storage_service_development.go` - Development strategy
+
+**Usage Example:**
+```go
+bucket := s3.NewSimpleStorageServiceFactory(stack, "WebsiteBucket",
+    s3.SimpleStorageServiceFactoryProps{
+        BucketType: s3.BucketTypeCloudfrontOAC,
+        BucketName: "my-website-prod",
+    })
+```
 
 ### CloudFront Construct (`constructs/Cloudfront/`)
-**Architecture:** Factory + Strategy pattern
-- `cloudfront_factory.go` - Entry point (`NewDistributionV2`)
+**Architecture:** Factory + Strategy pattern (1 strategy implemented, 3 planned)
+
+**Entry Point:** `NewDistributionV2(scope, id, props)`
+
+**Available Strategies:**
+- `OriginTypeS3` → S3 origin with OAC (fully implemented)
+
+**Planned Strategies:**
+- `OriginTypeAPIGateway` → API Gateway integration
+- `OriginTypeALB` → Application Load Balancer origin
+- `OriginTypeCustomHTTP` → Custom HTTP origins
+
+**Files:**
+- `cloudfront_factory.go` - Factory entry point
 - `cloudfront_contract.go` - Strategy interface
-- `cloudfront_s3.go` - S3 origin implementation with OAC (Origin Access Control)
-- Supports: S3, S3 Website, HTTP, ALB origins (only S3 fully implemented)
-- Features: Cache policies, SSL/TLS, WAF, error responses for SPAs
+- `cloudfront_s3.go` - S3 origin implementation with OAC
+
+**Features:** Cache policies, SSL/TLS (ACM), WAF integration, SPA support, security headers
+
+**Usage Example:**
+```go
+distribution := cloudfront.NewDistributionV2(stack, "CDN",
+    cloudfront.CloudFrontPropertiesV2{
+        OriginType: cloudfront.OriginTypeS3,
+        S3Bucket:   bucket,
+        WebACLId:   webacl.Arn(),
+        AutoConfigureS3BucketPolicy: true,
+    })
+```
+
+### WAF Construct (`constructs/WAF/`)
+**Architecture:** Factory + Strategy pattern (3 specialized strategies)
+
+**Entry Point:** `NewWebApplicationFirewallV2(scope, id, props)`
+
+**Available Strategies:**
+- `WafTypeWebApplication` → Web apps (OWASP Top 10, rate limit 2000 req/5min, XSS, SQL injection)
+- `WafTypeAPI` → APIs (rate limit 10000 req/5min, token validation, bot protection)
+- `WafTypeOWASP` → OWASP Core Rule Set (comprehensive vulnerability protection)
+
+**Files:**
+- `web_application_firewall_factory.go` - Factory entry point
+- `web_application_firewall_contract.go` - Strategy interface
+- `web_application_firewall_for_web_application.go` - Web application strategy
+- `web_application_firewall_for_api.go` - API protection strategy
+- `web_application_firewall_for_owasp.go` - OWASP strategy
+
+**Features:** AWS Managed Rules, custom rate limiting, geo-blocking, CloudWatch metrics
+
+**Usage Example:**
+```go
+webacl := waf.NewWebApplicationFirewallV2(stack, "WAF",
+    waf.WebApplicationFirewallFactoryProps{
+        WafType: waf.WafTypeWebApplication,
+        Scope:   waf.WafScopeCloudfront,
+        Name:    "my-app-waf",
+    })
+```
 
 ## Common Commands
 
@@ -87,40 +163,126 @@ go build
 
 ## Architecture & Patterns
 
-### Factory + Strategy Pattern (CloudFront)
-The CloudFront construct uses a **Factory pattern** to select the appropriate **Strategy** based on origin type:
+### Factory + Strategy Pattern (All Constructs)
+All constructs in this library use **Factory + Strategy pattern** for consistency and extensibility:
 
-1. **Factory** (`NewDistributionV2` in `cloudfront_factory.go`):
-   - Takes `CloudFrontPropertiesV2` with `OriginType` enum
-   - Selects appropriate strategy (S3, API, ALB)
-   - Returns configured CloudFront distribution
+**Pattern Structure:**
+```
+User Code → Factory (Type Selection) → Strategy Interface → Concrete Strategy → AWS Resources
+```
 
-2. **Strategy Interface** (`cloudfront_contract.go`):
-   ```go
-   type CloudFrontStrategy interface {
-       Build(scope, id, props) awscloudfront.Distribution
-   }
-   ```
+**Benefits:**
+- ✅ **Open/Closed Principle**: Add new strategies without modifying existing code
+- ✅ **Single Responsibility**: Each strategy handles one specific use case (~100-150 lines)
+- ✅ **Testability**: Mock strategies for unit tests
+- ✅ **Maintainability**: Clear separation of concerns
+- ✅ **Type Safety**: Compile-time validation of strategy types
 
-3. **Concrete Strategies**:
-   - `S3CloudFrontStrategy` - Implements S3 origin with OAC
+### Implementation Pattern (All Constructs)
 
-**When adding new origin types:**
-- Create new strategy file (e.g., `cloudfront_alb.go`)
-- Implement `CloudFrontStrategy` interface
-- Add case to factory's switch statement
-- Update `OriginType` enum
+**1. Factory Function** (Entry point):
+```go
+func NewXxxFactory(scope constructs.Construct, id string, props XxxFactoryProps) Resource {
+    var strategy XxxStrategy
+
+    switch props.Type {
+    case TypeA:
+        strategy = &TypeAStrategy{}
+    case TypeB:
+        strategy = &TypeBStrategy{}
+    default:
+        panic(fmt.Sprintf("Unsupported type: %s", props.Type))
+    }
+
+    return strategy.Build(scope, id, props)
+}
+```
+
+**2. Strategy Interface** (Contract):
+```go
+type XxxStrategy interface {
+    Build(scope constructs.Construct, id string, props XxxFactoryProps) Resource
+}
+```
+
+**3. Concrete Strategies** (Implementations):
+```go
+type TypeAStrategy struct{}
+
+func (s *TypeAStrategy) Build(scope constructs.Construct, id string, props XxxFactoryProps) Resource {
+    // Specific configuration for Type A use case
+    return awsxxx.NewResource(scope, jsii.String(id), &awsxxx.ResourceProps{
+        // Optimized properties for Type A
+    })
+}
+```
+
+### Adding New Strategies
+
+To add a new strategy to any construct:
+
+1. **Create strategy file**: `construct_new_strategy.go`
+2. **Implement interface**: `Build(scope, id, props) Resource`
+3. **Add type constant**: Update type enum
+4. **Register in factory**: Add case to switch statement
+5. **Document**: Update README with use cases and examples
+
+**Example - Adding new S3 strategy:**
+```go
+// 1. Add constant
+const BucketTypeReplication BucketType = "REPLICATION"
+
+// 2. Create simple_storage_service_replication.go
+type SimpleStorageServiceReplicationStrategy struct{}
+
+func (s *SimpleStorageServiceReplicationStrategy) Build(...) awss3.Bucket {
+    // Implementation
+}
+
+// 3. Register in factory
+case BucketTypeReplication:
+    strategy = &SimpleStorageServiceReplicationStrategy{}
+```
 
 ### Stack Structure
 **Location:** `stacks/website/StaticWebSite.go`
 
-Static website stack demonstrates proper construct composition:
-1. Creates S3 bucket using `s3.GetCloudFrontOriginProperties()`
-2. Creates CloudFront distribution via factory
-3. Deploys content with `BucketDeployment`
-4. Exports outputs (bucket name, CloudFront domain, URL)
+Static website stack demonstrates proper construct composition using Factory pattern:
 
-**Key pattern:** Use pre-configured property functions (e.g., `GetCloudFrontOriginProperties()`) as starting points, then customize.
+1. **Create S3 bucket** using `NewSimpleStorageServiceFactory`:
+   ```go
+   bucket := s3.NewSimpleStorageServiceFactory(stack, "WebsiteBucket",
+       s3.SimpleStorageServiceFactoryProps{
+           BucketType: s3.BucketTypeCloudfrontOAC,
+           BucketName: "my-website-prod",
+       })
+   ```
+
+2. **Create WAF** using `NewWebApplicationFirewallV2`:
+   ```go
+   webacl := waf.NewWebApplicationFirewallV2(stack, "WAF",
+       waf.WebApplicationFirewallFactoryProps{
+           WafType: waf.WafTypeWebApplication,
+           Scope:   waf.WafScopeCloudfront,
+           Name:    "website-waf",
+       })
+   ```
+
+3. **Create CloudFront** using `NewDistributionV2`:
+   ```go
+   distribution := cloudfront.NewDistributionV2(stack, "CDN",
+       cloudfront.CloudFrontPropertiesV2{
+           OriginType: cloudfront.OriginTypeS3,
+           S3Bucket:   bucket,
+           WebACLId:   webacl.Arn(),
+           AutoConfigureS3BucketPolicy: true,
+       })
+   ```
+
+4. **Deploy content** with `BucketDeployment`
+5. **Export outputs** (bucket name, CloudFront domain, URL)
+
+**Key Pattern:** All constructs use Factory pattern with type-based strategy selection.
 
 ### CDK Application Entry Point
 **Location:** `main.go`
@@ -148,10 +310,23 @@ CDK_DEFAULT_REGION=$(aws configure get region)
 
 ## Important Development Notes
 
+### Factory + Strategy Best Practices
+- **DO:** Use factory functions for all construct creation (`NewSimpleStorageServiceFactory`, `NewDistributionV2`, `NewWebApplicationFirewallV2`)
+- **DO:** Select appropriate strategy type based on use case (e.g., `BucketTypeCloudfrontOAC` for websites)
+- **DON'T:** Create AWS resources directly - always use factory pattern
+- **WHY:** Type safety, consistent configuration, maintainable code
+
 ### S3 + CloudFront Best Practices
-- **DO:** Use `GetCloudFrontOriginProperties()` for static websites (private bucket + OAC)
-- **DON'T:** Use S3 website hosting directly (commented out `GetStaticWebsiteProperties()`)
-- **WHY:** OAC (Origin Access Control) provides better security than legacy OAI
+- **DO:** Use `BucketTypeCloudfrontOAC` strategy for static websites (private bucket + OAC)
+- **DO:** Enable `AutoConfigureS3BucketPolicy: true` in CloudFront props
+- **DON'T:** Use S3 website hosting directly (no security, no HTTPS)
+- **WHY:** OAC (Origin Access Control) provides better security than legacy OAI and S3 website hosting
+
+### WAF Integration
+- **DO:** Create WAF WebACL before CloudFront distribution
+- **DO:** Use `WafScopeCloudfront` for CloudFront, `WafScopeRegional` for ALB/API Gateway
+- **DO:** Pass `webacl.Arn()` to CloudFront `WebACLId` property
+- **WHY:** WAF provides DDoS protection, rate limiting, and OWASP Top 10 defense
 
 ### Static Website Deployment
 **Content location:** `stacks/website/dist/`
@@ -168,10 +343,27 @@ Tests are currently commented out in `cdk-library_test.go`. When writing tests:
 - Example pattern available in commented code
 
 ### Naming Conventions
-- **Constructs:** PascalCase packages (`S3`, `Cloudfront`)
-- **Files:** snake_case with descriptive names (`cloudfront_s3.go`, `cloudfront_factory.go`)
+- **Constructs:** PascalCase packages (`S3`, `Cloudfront`, `WAF`)
+- **Files:** snake_case with pattern `construct_strategy.go`
+  - Factory: `construct_factory.go`
+  - Contract: `construct_contract.go`
+  - Strategies: `construct_specific_strategy.go`
+- **Constants:** PascalCase with type prefix (`BucketTypeCloudfrontOAC`, `WafTypeWebApplication`)
 - **Stacks:** PascalCase with "Stack" suffix (`StaticWebsiteStack`)
 - **Resources:** Descriptive IDs in construct calls (`"WebsiteBucket"`, `"WebsiteDistribution"`)
+
+### Current Implementation Status
+
+**Completed (10 strategies across 3 constructs):**
+- ✅ S3: 6 strategies (CloudFront Origin, Data Lake, Backup, Media, Enterprise, Development)
+- ✅ CloudFront: 1 strategy (S3 origin with OAC)
+- ✅ WAF: 3 strategies (Web Application, API, OWASP)
+
+**Planned:**
+- ⏳ CloudFront: 3 additional strategies (API Gateway, ALB, Custom HTTP)
+- ⏳ Lambda: Factory + Strategy implementation
+- ⏳ API Gateway: Factory + Strategy implementation
+- ⏳ DynamoDB: Factory + Strategy implementation
 
 ## Deployment Script (`deploy.sh`)
 

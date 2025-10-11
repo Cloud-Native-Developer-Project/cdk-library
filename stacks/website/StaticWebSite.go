@@ -9,6 +9,7 @@ import (
 
 	cloudfront "cdk-library/constructs/Cloudfront"
 	s3 "cdk-library/constructs/S3"
+	waf "cdk-library/constructs/WAF"
 )
 
 type StaticWebsiteStackProps struct {
@@ -25,8 +26,10 @@ type StaticWebsiteStackProps struct {
 
 	// Optional: CloudFront Configuration
 	PriceClass string
-	EnableWAF  bool
-	WebAclArn  string
+
+	// Optional: WAF Configuration
+	EnableWAF      bool                // Set to true to create WAF WebACL
+	WafProfileType waf.WAFProfileType  // ProfileTypeWebApplication, ProfileTypeAPIProtection, or ProfileTypeBotControl (default: ProfileTypeWebApplication)
 }
 
 func NewStaticWebsiteStack(scope constructs.Construct, id string, props *StaticWebsiteStackProps) awscdk.Stack {
@@ -34,30 +37,55 @@ func NewStaticWebsiteStack(scope constructs.Construct, id string, props *StaticW
 
 	// =============================================================================
 	// 1. CREATE S3 BUCKET (Private, for CloudFront Origin)
+	// Using Factory + Strategy Pattern
 	// =============================================================================
-	s3Props := s3.GetCloudFrontOriginProperties()
-	s3Props.BucketName = props.BucketName
-	s3Props.RemovalPolicy = "destroy"
-	s3Props.AutoDeleteObjects = true
-
-	bucket := s3.NewBucket(stack, "WebsiteBucket", s3Props)
+	autoDelete := true
+	bucket := s3.NewSimpleStorageServiceFactory(stack, "WebsiteBucket",
+		s3.SimpleStorageServiceFactoryProps{
+			BucketType:        s3.BucketTypeCloudfrontOAC,
+			BucketName:        props.BucketName,
+			RemovalPolicy:     "destroy",
+			AutoDeleteObjects: &autoDelete,
+		})
 
 	// =============================================================================
-	// 2. CREATE CLOUDFRONT DISTRIBUTION USING FACTORY
+	// 2. CREATE WAF WEB ACL (Optional)
+	// Using Factory + Strategy Pattern
+	// =============================================================================
+	var webAclArn string
+	if props.EnableWAF {
+		// Default to WebApplication profile if not specified
+		profileType := props.WafProfileType
+		if profileType == "" {
+			profileType = waf.ProfileTypeWebApplication
+		}
+
+		webacl := waf.NewWebApplicationFirewallFactory(stack, "WebsiteWAF",
+			waf.WAFFactoryProps{
+				Scope:       waf.ScopeCloudFront, // Must be CLOUDFRONT for CloudFront distributions
+				ProfileType: profileType,
+				Name:        props.WebsiteName + "-waf",
+			})
+
+		webAclArn = *webacl.AttrArn()
+	}
+
+	// =============================================================================
+	// 3. CREATE CLOUDFRONT DISTRIBUTION USING FACTORY
 	// =============================================================================
 	distribution := cloudfront.NewDistributionV2(stack, "WebsiteDistribution", cloudfront.CloudFrontPropertiesV2{
 		OriginType:                  cloudfront.OriginTypeS3,
 		S3Bucket:                    bucket,
 		DomainNames:                 props.DomainNames,
 		CertificateArn:              props.CertificateArn,
-		WebAclArn:                   props.WebAclArn,
+		WebAclArn:                   webAclArn,
 		Comment:                     props.WebsiteName + " - Static Website Distribution",
 		EnableAccessLogging:         false,
 		AutoConfigureS3BucketPolicy: true,
 	})
 
 	// =============================================================================
-	// 3. DEPLOY CONTENT TO S3
+	// 4. DEPLOY CONTENT TO S3
 	// =============================================================================
 	deployment := awss3deployment.NewBucketDeployment(stack, jsii.String("WebsiteDeployment"), &awss3deployment.BucketDeploymentProps{
 		Sources: &[]awss3deployment.ISource{
@@ -82,8 +110,27 @@ func NewStaticWebsiteStack(scope constructs.Construct, id string, props *StaticW
 	deployment.Node().AddDependency(distribution)
 
 	// =============================================================================
-	// 4. STACK OUTPUTS
+	// 5. STACK OUTPUTS
 	// =============================================================================
+	if props.EnableWAF {
+		profileType := props.WafProfileType
+		if profileType == "" {
+			profileType = waf.ProfileTypeWebApplication
+		}
+
+		awscdk.NewCfnOutput(stack, jsii.String("WAFEnabled"), &awscdk.CfnOutputProps{
+			Value:       jsii.String("Yes - " + string(profileType)),
+			Description: jsii.String("WAF protection enabled with profile"),
+			ExportName:  jsii.String(props.WebsiteName + "-WAFEnabled"),
+		})
+
+		awscdk.NewCfnOutput(stack, jsii.String("WAFWebACLArn"), &awscdk.CfnOutputProps{
+			Value:       jsii.String(webAclArn),
+			Description: jsii.String("WAF WebACL ARN"),
+			ExportName:  jsii.String(props.WebsiteName + "-WAFWebACLArn"),
+		})
+	}
+
 	awscdk.NewCfnOutput(stack, jsii.String("BucketName"), &awscdk.CfnOutputProps{
 		Value:       bucket.BucketName(),
 		Description: jsii.String("S3 bucket name"),
