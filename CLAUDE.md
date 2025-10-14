@@ -106,6 +106,50 @@ webacl := waf.NewWebApplicationFirewallV2(stack, "WAF",
     })
 ```
 
+### GuardDuty Construct (`constructs/GuardDuty/`)
+**Architecture:** Factory + Strategy pattern (3 specialized strategies)
+
+**Entry Point:** `NewGuardDutyDetector(scope, id, props)`
+
+**Available Strategies:**
+- `GuardDutyTypeBasic` → Foundational detection (CloudTrail, VPC Flow, DNS) - Cost: ~$4-8/month
+- `GuardDutyTypeComprehensive` → Full protection (S3, EKS, Malware, RDS, Lambda, Runtime) - Cost: ~$30-100/month
+- `GuardDutyTypeCustom` → Granular control over individual features - Cost: Variable
+
+**Files:**
+- `guardduty_factory.go` - Factory entry point
+- `guardduty_contract.go` - Strategy interface
+- `guardduty_basic.go` - Basic foundational strategy
+- `guardduty_comprehensive.go` - Comprehensive protection strategy
+- `guardduty_custom.go` - Custom configuration strategy
+
+**Features:** Threat intelligence, ML-based anomaly detection, multi-stage attack correlation, runtime monitoring
+
+**Usage Example:**
+```go
+// Basic (Development/Testing)
+detector := guardduty.NewGuardDutyDetector(stack, "BasicDetector",
+    guardduty.GuardDutyFactoryProps{
+        DetectorType: guardduty.GuardDutyTypeBasic,
+    })
+
+// Comprehensive (Production)
+detector := guardduty.NewGuardDutyDetector(stack, "ProdDetector",
+    guardduty.GuardDutyFactoryProps{
+        DetectorType: guardduty.GuardDutyTypeComprehensive,
+        FindingPublishingFrequency: jsii.String("FIFTEEN_MINUTES"),
+    })
+
+// Custom (S3 + EKS only)
+detector := guardduty.NewGuardDutyDetector(stack, "CustomDetector",
+    guardduty.GuardDutyFactoryProps{
+        DetectorType: guardduty.GuardDutyTypeCustom,
+        EnableS3Protection: jsii.Bool(true),
+        EnableEKSProtection: jsii.Bool(true),
+        EnableEKSRuntimeMonitoring: jsii.Bool(true),
+    })
+```
+
 ## Common Commands
 
 ### Development Workflow
@@ -311,8 +355,8 @@ CDK_DEFAULT_REGION=$(aws configure get region)
 ## Important Development Notes
 
 ### Factory + Strategy Best Practices
-- **DO:** Use factory functions for all construct creation (`NewSimpleStorageServiceFactory`, `NewDistributionV2`, `NewWebApplicationFirewallV2`)
-- **DO:** Select appropriate strategy type based on use case (e.g., `BucketTypeCloudfrontOAC` for websites)
+- **DO:** Use factory functions for all construct creation (`NewSimpleStorageServiceFactory`, `NewDistributionV2`, `NewWebApplicationFirewallV2`, `NewGuardDutyDetector`)
+- **DO:** Select appropriate strategy type based on use case (e.g., `BucketTypeCloudfrontOAC` for websites, `GuardDutyTypeComprehensive` for production)
 - **DON'T:** Create AWS resources directly - always use factory pattern
 - **WHY:** Type safety, consistent configuration, maintainable code
 
@@ -327,6 +371,15 @@ CDK_DEFAULT_REGION=$(aws configure get region)
 - **DO:** Use `WafScopeCloudfront` for CloudFront, `WafScopeRegional` for ALB/API Gateway
 - **DO:** Pass `webacl.Arn()` to CloudFront `WebACLId` property
 - **WHY:** WAF provides DDoS protection, rate limiting, and OWASP Top 10 defense
+
+### GuardDuty Best Practices
+- **DO:** Use `GuardDutyTypeBasic` for dev/test environments to minimize cost
+- **DO:** Use `GuardDutyTypeComprehensive` for production workloads requiring maximum security
+- **DO:** Use `GuardDutyTypeCustom` for phased rollout or specific compliance requirements
+- **DO:** Set `FindingPublishingFrequency: "FIFTEEN_MINUTES"` for production (rapid incident response)
+- **DO:** Integrate findings with EventBridge for automated remediation workflows
+- **DON'T:** Disable GuardDuty in production - it's a critical security baseline
+- **WHY:** GuardDuty provides continuous threat detection using ML and threat intelligence without requiring agents
 
 ### Static Website Deployment
 **Content location:** `stacks/website/dist/`
@@ -354,10 +407,11 @@ Tests are currently commented out in `cdk-library_test.go`. When writing tests:
 
 ### Current Implementation Status
 
-**Completed (10 strategies across 3 constructs):**
+**Completed (13 strategies across 4 constructs):**
 - ✅ S3: 6 strategies (CloudFront Origin, Data Lake, Backup, Media, Enterprise, Development)
 - ✅ CloudFront: 1 strategy (S3 origin with OAC)
 - ✅ WAF: 3 strategies (Web Application, API, OWASP)
+- ✅ GuardDuty: 3 strategies (Basic, Comprehensive, Custom)
 
 **Planned:**
 - ⏳ CloudFront: 3 additional strategies (API Gateway, ALB, Custom HTTP)

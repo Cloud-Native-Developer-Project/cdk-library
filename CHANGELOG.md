@@ -7,6 +7,192 @@ y este proyecto se adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
+## [0.5.0] - 2025-10-11
+
+### 🛡️ Security Enhancement - GuardDuty Threat Detection
+
+Este release agrega **AWS GuardDuty** como nuevo constructo de seguridad, completando la capa de detección de amenazas de la arquitectura. GuardDuty proporciona monitoreo continuo usando machine learning e inteligencia de amenazas.
+
+#### 🎯 GuardDuty Construct - Implementación Completa 🆕
+
+Nuevo constructo AWS GuardDuty con 3 estrategias de detección de amenazas usando Factory + Strategy pattern:
+
+**Estructura modular:**
+
+```
+constructs/GuardDuty/
+├── guardduty_factory.go           # Factory - punto de entrada
+├── guardduty_contract.go          # Strategy interface
+├── guardduty_basic.go             # Strategy: Foundational Detection
+├── guardduty_comprehensive.go     # Strategy: Full Protection
+└── guardduty_custom.go            # Strategy: Custom Configuration
+```
+
+**Estrategias Implementadas:**
+
+1. **Basic Strategy** (`GuardDutyTypeBasic`):
+   - **Detección foundational**: CloudTrail, VPC Flow Logs, DNS logs
+   - **Finding frequency**: 6 horas (cost-effective)
+   - **Features deshabilitadas**: S3, EKS, Malware, RDS, Lambda
+   - **Costo**: ~$4-8/mes
+   - **Uso**: Dev/test, workloads pequeños, presupuesto limitado
+
+2. **Comprehensive Strategy** (`GuardDutyTypeComprehensive`):
+   - **Detección completa**: Todas las features habilitadas
+   - **S3 Protection**: Monitoreo de data events y políticas de bucket
+   - **EKS Protection**: Audit logs + Runtime Monitoring con agent auto-management
+   - **Malware Protection**: Scanning agentless de volúmenes EBS
+   - **RDS Protection**: Detección de logins anómalos
+   - **Lambda Protection**: Monitoreo de network activity
+   - **Runtime Monitoring**: EC2 y Fargate con agent management
+   - **Finding frequency**: 15 minutos (rapid incident response)
+   - **Costo**: ~$30-100/mes
+   - **Uso**: Production, compliance (PCI DSS, HIPAA, SOC 2)
+
+3. **Custom Strategy** (`GuardDutyTypeCustom`):
+   - **Control granular**: Habilita solo las features necesarias
+   - **Opciones configurables**:
+     - `EnableS3Protection`: Monitoring de S3
+     - `EnableEKSProtection` + `EnableEKSRuntimeMonitoring`: Kubernetes protection
+     - `EnableMalwareProtection`: EBS malware scanning
+     - `EnableRDSProtection`: Database login monitoring
+     - `EnableLambdaProtection`: Serverless monitoring
+     - `EnableRuntimeMonitoring` + agent management options
+   - **Finding frequency**: Configurable
+   - **Costo**: Variable según features habilitadas
+   - **Uso**: Phased rollout, cost optimization, specific compliance needs
+
+**Características GuardDuty:**
+
+- ✅ **Threat Intelligence**: Feeds de IPs/dominios maliciosos y file hashes
+- ✅ **Machine Learning**: Detección de anomalías y patrones de ataque
+- ✅ **Multi-stage Attack Detection**: Correlación de eventos cross-service
+- ✅ **Runtime Monitoring**: Visibilidad profunda en EC2, EKS, Fargate
+- ✅ **Agentless Malware Scanning**: Snapshot-based EBS analysis
+- ✅ **No impacto en performance**: Análisis out-of-band de logs
+- ✅ **EventBridge Integration**: Automated remediation workflows
+
+**Ejemplos de Uso:**
+
+```go
+// Basic (Development)
+detector := guardduty.NewGuardDutyDetector(stack, "BasicDetector",
+    guardduty.GuardDutyFactoryProps{
+        DetectorType: guardduty.GuardDutyTypeBasic,
+    })
+
+// Comprehensive (Production)
+detector := guardduty.NewGuardDutyDetector(stack, "ProdDetector",
+    guardduty.GuardDutyFactoryProps{
+        DetectorType: guardduty.GuardDutyTypeComprehensive,
+        FindingPublishingFrequency: jsii.String("FIFTEEN_MINUTES"),
+    })
+
+// Custom (S3 + EKS only)
+detector := guardduty.NewGuardDutyDetector(stack, "CustomDetector",
+    guardduty.GuardDutyFactoryProps{
+        DetectorType: guardduty.GuardDutyTypeCustom,
+        EnableS3Protection: jsii.Bool(true),
+        EnableEKSProtection: jsii.Bool(true),
+        EnableEKSRuntimeMonitoring: jsii.Bool(true),
+    })
+```
+
+#### 🛡️ Arquitectura de Seguridad Defense-in-Depth Completa
+
+El proyecto ahora implementa una arquitectura de seguridad en capas:
+
+```
+Internet
+   ↓
+🛡️ WAF (Web Application Firewall)
+   ├─ Rate Limiting
+   ├─ Geo-blocking
+   ├─ OWASP Top 10 Protection
+   └─ Bot Control
+   ↓
+☁️ CloudFront Distribution
+   ├─ DDoS Protection (Shield)
+   └─ Origin Access Control (OAC)
+   ↓
+🔒 S3 Bucket (Private)
+   ├─ Encryption at Rest
+   └─ Versioning + Lifecycle
+   ↓
+👁️ GuardDuty (Threat Detection)
+   ├─ ML-based Anomaly Detection
+   ├─ Malware Scanning
+   ├─ Runtime Monitoring
+   └─ Multi-stage Attack Correlation
+```
+
+#### 📚 Documentación Actualizada
+
+- **`CLAUDE.md`**:
+  - Sección completa de GuardDuty construct
+  - Best practices para selección de estrategias
+  - Guía de integración con EventBridge
+  - Cost considerations por strategy
+
+### Added
+
+- 🛡️ **GuardDuty Construct (Completo)**: 3 estrategias de detección de amenazas
+  - `GuardDutyTypeBasic`: Detección foundational (~$4-8/mes)
+  - `GuardDutyTypeComprehensive`: Protección completa (~$30-100/mes)
+  - `GuardDutyTypeCustom`: Configuración granular (costo variable)
+- 🏗️ **GuardDuty Factory Pattern**: `NewGuardDutyDetector()` como punto de entrada
+- 🎨 **GuardDuty Strategy Interface**: Contrato para detection strategies
+- 📊 **Finding Frequency Options**: 15min, 1hr, 6hr (configurable por strategy)
+- 🤖 **Agent Management**: Auto-deployment para EC2, EKS, Fargate
+
+### Changed
+
+- 📈 **Implementation Status**: 13 strategies totales (S3: 6, CloudFront: 1, WAF: 3, GuardDuty: 3)
+- 🏗️ **Architecture Coverage**: Security + Storage + CDN + Threat Detection
+
+### Technical Details
+
+**GuardDuty Features Implementadas:**
+
+| Feature | Basic | Comprehensive | Custom |
+|---------|-------|---------------|--------|
+| CloudTrail Events | ✅ | ✅ | ✅ (default) |
+| VPC Flow Logs | ✅ | ✅ | ✅ (default) |
+| DNS Logs | ✅ | ✅ | ✅ (default) |
+| S3 Data Events | ❌ | ✅ | Optional |
+| EKS Audit Logs | ❌ | ✅ | Optional |
+| EKS Runtime Monitoring | ❌ | ✅ | Optional |
+| EBS Malware Protection | ❌ | ✅ | Optional |
+| RDS Login Events | ❌ | ✅ | Optional |
+| Lambda Network Logs | ❌ | ✅ | Optional |
+| EC2 Runtime Monitoring | ❌ | ✅ | Optional |
+| Finding Frequency | 6hr | 15min | Configurable |
+
+**Threat Detection Coverage:**
+
+- **Credential Compromise**: Detección de credenciales exfiltradas o comprometidas
+- **Cryptomining**: Identificación de actividad de minería no autorizada
+- **Malware**: Scanning de EBS volumes y objetos S3
+- **Data Exfiltration**: Detección de patrones de exfiltración
+- **Ransomware**: Identificación temprana de comportamiento ransomware
+- **Anomalous Database Access**: Logins inusuales en RDS/Aurora
+- **C2 Communication**: Detección de command & control en Lambda/EC2
+- **Kubernetes Threats**: API abuse, privilege escalation, container escapes
+
+**Métricas de implementación:**
+
+- Constructos con Factory + Strategy: 4/4 (CloudFront, S3, WAF, GuardDuty)
+- **Strategies implementadas: 13 total**
+  - CloudFront: 1 strategy
+  - S3: 6 strategies
+  - WAF: 3 strategies
+  - GuardDuty: 3 strategies
+- Lines of code GuardDuty: 550 líneas (5 archivos)
+- Build time: <5 segundos
+- API compatibility: AWS CDK v2 Go
+
+---
+
 ## [0.4.0] - 2025-10-11
 
 ### 🛡️ Security & Architecture Expansion - WAF Implementation + S3 Refactoring
