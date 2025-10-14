@@ -55,7 +55,7 @@ func NewAddiS3ToSFTPStack(scope constructs.Construct, id string, props *awscdk.S
 	// Using Lambda construct with optimized defaults (ARM64, 512MB, 30s timeout, X-Ray tracing)
 	lambdaFunction := golambda.NewGoLambda(stack, "WebhookNotifier", golambda.GoLambdaProps{
 		FunctionName: "addi-webhook-notifier",
-		CodePath:     "lambda/webhook-notifier",
+		CodePath:     "stacks/addi/lambda/webhook-notifier",
 		Description:  jsii.String("Generates S3 Presigned URLs and sends webhook to on-premise server"),
 		Environment: &map[string]*string{
 			"BUCKET_NAME":            bucket.BucketName(),
