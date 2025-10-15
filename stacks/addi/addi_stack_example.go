@@ -1,10 +1,10 @@
 package addi
 
 import (
-	"cdk-library/constructs/EventBridgeIntegrations"
-	"cdk-library/constructs/GuardDuty"
+	eventbridgeintegrations "cdk-library/constructs/EventBridgeIntegrations"
+	guardduty "cdk-library/constructs/GuardDuty"
 	golambda "cdk-library/constructs/Lambda"
-	"cdk-library/constructs/S3"
+	s3 "cdk-library/constructs/S3"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssecretsmanager"
@@ -33,17 +33,17 @@ func NewAddiS3ToSFTPStack(scope constructs.Construct, id string, props *awscdk.S
 	// ========== 1. S3 Landing Zone (Enterprise Strategy) ==========
 	bucket := s3.NewSimpleStorageServiceFactory(stack, "LandingZone",
 		s3.SimpleStorageServiceFactoryProps{
-			BucketType: s3.BucketTypeEnterprise,
-			BucketName: "addi-landing-zone-prod",
+			BucketType: s3.BucketTypeDevelopment,
+			BucketName: "addi-landing-zone-dev",
 		})
 
 	// ========== 2. Secrets Manager (Webhook Credentials) ==========
 	webhookSecret := awssecretsmanager.NewSecret(stack, jsii.String("WebhookCredentials"), &awssecretsmanager.SecretProps{
-		SecretName: jsii.String("addi/webhook-credentials"),
+		SecretName:  jsii.String("addi/webhook-credentials"),
 		Description: jsii.String("Webhook endpoint and HMAC secret for on-premise server"),
 		GenerateSecretString: &awssecretsmanager.SecretStringGenerator{
 			SecretStringTemplate: jsii.String(`{
-				"webhookUrl": "https://on-premise.addi.com/api/s3-events",
+				"webhookUrl": "https://360b6fbd06bc.ngrok-free.app/webhook/addi-csv",
 				"apiKey": "addi_prod_ak_placeholder"
 			}`),
 			GenerateStringKey: jsii.String("hmacSecret"),
@@ -63,6 +63,11 @@ func NewAddiS3ToSFTPStack(scope constructs.Construct, id string, props *awscdk.S
 			"PRESIGNED_URL_EXPIRES":  jsii.String("900"), // 15 minutes
 			"MAX_RETRY_ATTEMPTS":     jsii.String("4"),
 			"RETRY_EXPONENTIAL_BASE": jsii.String("2"),
+
+			// 🔧 DEVELOPMENT MODE: Uncomment and update with your ngrok URL
+			// This bypasses Secrets Manager and sends webhooks directly to your local backend
+			// Get your URL by running: ./stacks/addi/backend/get-ngrok-url.sh
+			"WEBHOOK_URL_OVERRIDE": jsii.String("https://35b57cefe2cc.ngrok-free.app/webhook/addi-csv"),
 		},
 	})
 
@@ -89,11 +94,12 @@ func NewAddiS3ToSFTPStack(scope constructs.Construct, id string, props *awscdk.S
 			},
 		})
 
-	// ========== 5. GuardDuty (Optional - Comprehensive Protection) ==========
+	// ========== 5. GuardDuty (Data Protection Strategy) ==========
+	// Monitors S3, EKS, RDS, Lambda, and EBS without runtime agents
+	// Cost: ~$15-50/month | Ideal for S3-centric and serverless workloads
 	guardduty.NewGuardDutyDetector(stack, "SecurityMonitor",
 		guardduty.GuardDutyFactoryProps{
-			DetectorType:               guardduty.GuardDutyTypeComprehensive,
-			EnableS3Protection:         jsii.Bool(true),
+			DetectorType:               guardduty.GuardDutyTypeDataProtection,
 			FindingPublishingFrequency: jsii.String("FIFTEEN_MINUTES"),
 		})
 

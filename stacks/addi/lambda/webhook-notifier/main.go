@@ -45,6 +45,7 @@ type WebhookPayload struct {
 type Config struct {
 	BucketName           string
 	WebhookSecretARN     string
+	WebhookURLOverride   string // For local development with ngrok
 	PresignedURLExpires  int
 	MaxRetryAttempts     int
 	RetryExponentialBase int
@@ -64,6 +65,7 @@ func init() {
 	cfg = Config{
 		BucketName:           getEnv("BUCKET_NAME", ""),
 		WebhookSecretARN:     getEnv("WEBHOOK_SECRET_ARN", ""),
+		WebhookURLOverride:   getEnv("WEBHOOK_URL_OVERRIDE", ""), // For local dev with ngrok
 		PresignedURLExpires:  getEnvInt("PRESIGNED_URL_EXPIRES", 900),  // 15 minutes
 		MaxRetryAttempts:     getEnvInt("MAX_RETRY_ATTEMPTS", 4),
 		RetryExponentialBase: getEnvInt("RETRY_EXPONENTIAL_BASE", 2),
@@ -73,8 +75,10 @@ func init() {
 	if cfg.BucketName == "" {
 		log.Fatal("BUCKET_NAME environment variable is required")
 	}
-	if cfg.WebhookSecretARN == "" {
-		log.Fatal("WEBHOOK_SECRET_ARN environment variable is required")
+
+	// WebhookSecretARN is required only if override is not provided (production mode)
+	if cfg.WebhookSecretARN == "" && cfg.WebhookURLOverride == "" {
+		log.Fatal("Either WEBHOOK_SECRET_ARN or WEBHOOK_URL_OVERRIDE is required")
 	}
 
 	// Initialize AWS SDK clients
@@ -92,10 +96,22 @@ func init() {
 		Timeout: 10 * time.Second,
 	}
 
-	// Load webhook credentials from Secrets Manager (cached in Lambda container)
-	credentials, err = loadWebhookCredentials(ctx)
-	if err != nil {
-		log.Fatalf("Failed to load webhook credentials: %v", err)
+	// Load webhook credentials
+	// In development mode (WEBHOOK_URL_OVERRIDE set), use override and skip Secrets Manager
+	if cfg.WebhookURLOverride != "" {
+		log.Printf("⚠️  DEVELOPMENT MODE: Using WEBHOOK_URL_OVERRIDE=%s", cfg.WebhookURLOverride)
+		credentials = &WebhookCredentials{
+			WebhookURL: cfg.WebhookURLOverride,
+			APIKey:     "dev-mode", // Not validated in dev mode
+			HMACSecret: "dev-mode", // Not validated in dev mode
+		}
+	} else {
+		// Production mode: Load credentials from Secrets Manager (cached in Lambda container)
+		credentials, err = loadWebhookCredentials(ctx)
+		if err != nil {
+			log.Fatalf("Failed to load webhook credentials: %v", err)
+		}
+		log.Println("✅ Loaded credentials from Secrets Manager")
 	}
 
 	log.Println("Lambda initialized successfully")

@@ -145,7 +145,7 @@ func NewGoLambda(scope constructs.Construct, id string, props GoLambdaProps) aws
 	// Build function props
 	functionProps := &awslambda.FunctionProps{
 		FunctionName: jsii.String(props.FunctionName),
-		Runtime:      awslambda.Runtime_GO_1_X(),
+		Runtime:      awslambda.Runtime_PROVIDED_AL2(),
 		Architecture: architecture,
 		Code:         awslambda.Code_FromAsset(jsii.String(props.CodePath), nil),
 		Handler:      handler,

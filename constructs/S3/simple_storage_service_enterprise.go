@@ -85,14 +85,17 @@ func (s *SimpleStorageServiceEnterpriseStrategy) Build(scope constructs.Construc
 		},
 
 		// Comprehensive Monitoring & Auditing - REQUIRED for compliance
-		ServerAccessLogsPrefix: jsii.String("access-logs/"),
-		Inventories: &[]*awss3.Inventory{
-			{
-				Enabled:               jsii.Bool(true),
-				IncludeObjectVersions: awss3.InventoryObjectVersion_CURRENT,
-				Frequency:             awss3.InventoryFrequency_DAILY,
-			},
-		},
+		// ServerAccessLogs commented out temporarily - KMS encryption conflicts with logging target
+		// For production, create a separate logging bucket with S3_MANAGED encryption
+		// ServerAccessLogsPrefix: jsii.String("access-logs/"),
+		// Inventories commented out temporarily - requires additional destination bucket setup
+		// Inventories: &[]*awss3.Inventory{
+		// 	{
+		// 		Enabled:               jsii.Bool(true),
+		// 		IncludeObjectVersions: awss3.InventoryObjectVersion_CURRENT,
+		// 		Frequency:             awss3.InventoryFrequency_DAILY,
+		// 	},
+		// },
 		Metrics: &[]*awss3.BucketMetrics{
 			{
 				Id: jsii.String("EntireBucket"),

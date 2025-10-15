@@ -107,7 +107,7 @@ webacl := waf.NewWebApplicationFirewallV2(stack, "WAF",
 ```
 
 ### GuardDuty Construct (`constructs/GuardDuty/`)
-**Architecture:** Factory + Strategy pattern (3 specialized strategies)
+**Architecture:** Factory + Strategy pattern (4 specialized strategies)
 
 **Entry Point:** `NewGuardDutyDetector(scope, id, props)`
 
@@ -115,6 +115,7 @@ webacl := waf.NewWebApplicationFirewallV2(stack, "WAF",
 - `GuardDutyTypeBasic` → Foundational detection (CloudTrail, VPC Flow, DNS) - Cost: ~$4-8/month
 - `GuardDutyTypeComprehensive` → Full protection (S3, EKS, Malware, RDS, Lambda, Runtime) - Cost: ~$30-100/month
 - `GuardDutyTypeCustom` → Granular control over individual features - Cost: Variable
+- `GuardDutyTypeDataProtection` → S3 data protection with malware scanning - Cost: ~$15-25/month
 
 **Files:**
 - `guardduty_factory.go` - Factory entry point
@@ -122,6 +123,7 @@ webacl := waf.NewWebApplicationFirewallV2(stack, "WAF",
 - `guardduty_basic.go` - Basic foundational strategy
 - `guardduty_comprehensive.go` - Comprehensive protection strategy
 - `guardduty_custom.go` - Custom configuration strategy
+- `guardduty_data_protection.go` - Data protection strategy
 
 **Features:** Threat intelligence, ML-based anomaly detection, multi-stage attack correlation, runtime monitoring
 
@@ -148,6 +150,91 @@ detector := guardduty.NewGuardDutyDetector(stack, "CustomDetector",
         EnableEKSProtection: jsii.Bool(true),
         EnableEKSRuntimeMonitoring: jsii.Bool(true),
     })
+
+// Data Protection (S3 focused)
+detector := guardduty.NewGuardDutyDetector(stack, "DataProtection",
+    guardduty.GuardDutyFactoryProps{
+        DetectorType: guardduty.GuardDutyTypeDataProtection,
+        FindingPublishingFrequency: jsii.String("FIFTEEN_MINUTES"),
+    })
+```
+
+### Lambda Construct (`constructs/Lambda/`)
+**Architecture:** Factory + Strategy pattern (1 strategy implemented)
+
+**Entry Point:** `NewGoLambdaFunction(scope, id, props)`
+
+**Available Strategies:**
+- `GoLambda` → Go runtime with ARM64 support (custom runtime `provided.al2`)
+
+**Files:**
+- `lambda_factory.go` - Factory entry point
+- `lambda_contract.go` - Strategy interface
+- `go_lambda.go` - Go Lambda ARM64 implementation
+
+**Features:** ARM64 (Graviton2), environment variables, IAM permissions, Dead Letter Queue, retry logic
+
+**Usage Example:**
+```go
+lambdaFn := lambda.NewGoLambdaFunction(stack, "WebhookNotifier",
+    lambda.GoLambdaFactoryProps{
+        FunctionName: "s3-to-sftp-webhook",
+        CodePath:     "stacks/addi/lambda/webhook-notifier",
+        Handler:      "bootstrap",
+        Environment: map[string]*string{
+            "WEBHOOK_URL": jsii.String("https://api.example.com/webhook"),
+        },
+        Timeout:      awscdk.Duration_Seconds(jsii.Number(30)),
+        MemorySize:   jsii.Number(256),
+    })
+```
+
+**Compilation (Required):**
+```bash
+cd stacks/addi/lambda/webhook-notifier/
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bootstrap -tags lambda.norpc main.go
+```
+
+### EventBridge Integration
+**Architecture:** Event-driven patterns (3 strategies: 1 implemented, 2 planned)
+
+**Available Patterns:**
+- `S3-to-Lambda` → S3 ObjectCreated events trigger Lambda (✅ Implemented)
+- `SNS-to-Lambda` → SNS message triggers Lambda (⏳ Planned)
+- `SQS-to-Lambda` → SQS message triggers Lambda (⏳ Planned)
+
+**S3-to-Lambda Features:**
+- Event pattern: `s3:ObjectCreated:*` with bucket filter
+- Lambda target with retry configuration (3 attempts, exponential backoff)
+- Dead Letter Queue for failed events
+- EventBridge metrics and CloudWatch integration
+
+**Usage Example:**
+```go
+// EventBridge Rule for S3 events
+rule := awsevents.NewRule(stack, "S3EventRule", &awsevents.RuleProps{
+    EventPattern: &awsevents.EventPattern{
+        Source:     jsii.Strings("aws.s3"),
+        DetailType: jsii.Strings("Object Created"),
+        Detail: map[string]interface{}{
+            "bucket": map[string]interface{}{
+                "name": []string{"addi-landing-zone-dev"},
+            },
+        },
+    },
+})
+
+// Add Lambda target with DLQ
+dlq := awssqs.NewQueue(stack, "DLQ", &awssqs.QueueProps{
+    QueueName: jsii.String("s3-events-dlq"),
+    RetentionPeriod: awscdk.Duration_Days(jsii.Number(14)),
+})
+
+rule.AddTarget(awseventstargets.NewLambdaFunction(lambdaFn, &awseventstargets.LambdaFunctionProps{
+    DeadLetterQueue: dlq,
+    MaxEventAge:     awscdk.Duration_Hours(jsii.Number(2)),
+    RetryAttempts:   jsii.Number(3),
+}))
 ```
 
 ## Common Commands
@@ -289,6 +376,8 @@ case BucketTypeReplication:
 ```
 
 ### Stack Structure
+
+#### Static Website Stack
 **Location:** `stacks/website/StaticWebSite.go`
 
 Static website stack demonstrates proper construct composition using Factory pattern:
@@ -327,6 +416,95 @@ Static website stack demonstrates proper construct composition using Factory pat
 5. **Export outputs** (bucket name, CloudFront domain, URL)
 
 **Key Pattern:** All constructs use Factory pattern with type-based strategy selection.
+
+#### Addi S3 to SFTP Pipeline Stack
+**Location:** `stacks/addi/addi_stack_example.go`
+
+Production-ready event-driven pipeline that automates file transfer from S3 to SFTP servers:
+
+**Architecture Flow:**
+```
+Client (IAM) → S3 Bucket → EventBridge → Lambda → Backend API → SFTP Server
+```
+
+**Stack Components:**
+
+1. **S3 Bucket** (Development Strategy):
+   ```go
+   bucket := s3.NewSimpleStorageServiceFactory(stack, "LandingZone",
+       s3.SimpleStorageServiceFactoryProps{
+           BucketType: s3.BucketTypeDevelopment,
+           BucketName: "addi-landing-zone-dev",
+       })
+   ```
+
+2. **Lambda Function** (Go ARM64):
+   ```go
+   lambdaFn := lambda.NewGoLambdaFunction(stack, "WebhookNotifier",
+       lambda.GoLambdaFactoryProps{
+           FunctionName: "s3-to-sftp-webhook",
+           CodePath:     "stacks/addi/lambda/webhook-notifier",
+           Handler:      "bootstrap",
+           Environment: map[string]*string{
+               "WEBHOOK_URL": jsii.String(webhookURL),
+           },
+       })
+   ```
+
+3. **EventBridge Rule** (S3 to Lambda):
+   ```go
+   rule := awsevents.NewRule(stack, "S3EventRule", &awsevents.RuleProps{
+       EventPattern: &awsevents.EventPattern{
+           Source:     jsii.Strings("aws.s3"),
+           DetailType: jsii.Strings("Object Created"),
+           Detail: map[string]interface{}{
+               "bucket": map[string]interface{}{
+                   "name": []string{*bucket.BucketName()},
+               },
+           },
+       },
+   })
+   ```
+
+4. **Dead Letter Queue** (Failed Events):
+   ```go
+   dlq := awssqs.NewQueue(stack, "DLQ", &awssqs.QueueProps{
+       QueueName: jsii.String("s3-events-dlq"),
+       RetentionPeriod: awscdk.Duration_Days(jsii.Number(14)),
+   })
+
+   rule.AddTarget(awseventstargets.NewLambdaFunction(lambdaFn, &awseventstargets.LambdaFunctionProps{
+       DeadLetterQueue: dlq,
+       MaxEventAge:     awscdk.Duration_Hours(jsii.Number(2)),
+       RetryAttempts:   jsii.Number(3),
+   }))
+   ```
+
+5. **GuardDuty** (Data Protection):
+   ```go
+   detector := guardduty.NewGuardDutyDetector(stack, "DataProtection",
+       guardduty.GuardDutyFactoryProps{
+           DetectorType: guardduty.GuardDutyTypeDataProtection,
+           FindingPublishingFrequency: jsii.String("FIFTEEN_MINUTES"),
+       })
+   ```
+
+**Backend API (External):**
+- Go API server running in Docker
+- Receives webhook from Lambda with presigned URL
+- Downloads file from S3 using HTTP (no AWS credentials needed)
+- Uploads to SFTP server
+- Located in: `stacks/addi/backend/`
+
+**Key Features:**
+- ✅ IAM-based S3 access (not public)
+- ✅ Presigned URLs for secure downloads (1 hour expiration)
+- ✅ Event-driven architecture with automatic retries
+- ✅ Dead Letter Queue for failed events
+- ✅ GuardDuty malware scanning
+- ✅ Comprehensive documentation with Mermaid diagrams
+
+**Documentation:** See `stacks/addi/README.md` for complete implementation details, testing procedures, and architecture diagrams.
 
 ### CDK Application Entry Point
 **Location:** `main.go`
@@ -376,10 +554,36 @@ CDK_DEFAULT_REGION=$(aws configure get region)
 - **DO:** Use `GuardDutyTypeBasic` for dev/test environments to minimize cost
 - **DO:** Use `GuardDutyTypeComprehensive` for production workloads requiring maximum security
 - **DO:** Use `GuardDutyTypeCustom` for phased rollout or specific compliance requirements
+- **DO:** Use `GuardDutyTypeDataProtection` for S3-focused workloads with sensitive data
 - **DO:** Set `FindingPublishingFrequency: "FIFTEEN_MINUTES"` for production (rapid incident response)
 - **DO:** Integrate findings with EventBridge for automated remediation workflows
 - **DON'T:** Disable GuardDuty in production - it's a critical security baseline
 - **WHY:** GuardDuty provides continuous threat detection using ML and threat intelligence without requiring agents
+
+### Lambda Best Practices
+- **DO:** Compile Go Lambda as `bootstrap` executable for custom runtime `provided.al2`
+- **DO:** Use ARM64 architecture (Graviton2) for ~20% cost savings
+- **DO:** Use compilation command: `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bootstrap -tags lambda.norpc main.go`
+- **DO:** Set appropriate timeout based on operation (30s for network operations is reasonable)
+- **DO:** Use environment variables for configuration (webhook URLs, API endpoints)
+- **DO:** Implement Dead Letter Queue for failed invocations
+- **DO:** Configure retry attempts (3 with exponential backoff is standard)
+- **DO:** Grant minimal IAM permissions (S3 read-only + presigned URL generation)
+- **DON'T:** Use x86_64 unless required by dependencies (ARM64 is cheaper)
+- **DON'T:** Forget to recompile after code changes
+- **DON'T:** Use AWS SDK in external services - use presigned URLs instead
+- **WHY:** Presigned URLs avoid credential management outside AWS, reducing security risk
+
+### EventBridge Best Practices
+- **DO:** Use specific event patterns to filter events (bucket name, prefix, etc.)
+- **DO:** Configure Dead Letter Queue for failed Lambda invocations
+- **DO:** Set `MaxEventAge` to prevent processing stale events (2 hours is reasonable)
+- **DO:** Use retry configuration with exponential backoff (3 attempts: 60s, 120s, 180s)
+- **DO:** Monitor DLQ for failed events and investigate root causes
+- **DO:** Use EventBridge metrics to track rule invocations and failures
+- **DON'T:** Process every S3 event - filter by bucket/prefix to reduce costs
+- **DON'T:** Ignore DLQ messages - they indicate systematic failures
+- **WHY:** Proper retry logic ensures reliability while preventing infinite loops
 
 ### Static Website Deployment
 **Content location:** `stacks/website/dist/`
@@ -407,15 +611,16 @@ Tests are currently commented out in `cdk-library_test.go`. When writing tests:
 
 ### Current Implementation Status
 
-**Completed (13 strategies across 4 constructs):**
+**Completed (18 strategies across 6 constructs):**
 - ✅ S3: 6 strategies (CloudFront Origin, Data Lake, Backup, Media, Enterprise, Development)
 - ✅ CloudFront: 1 strategy (S3 origin with OAC)
 - ✅ WAF: 3 strategies (Web Application, API, OWASP)
-- ✅ GuardDuty: 3 strategies (Basic, Comprehensive, Custom)
+- ✅ GuardDuty: 4 strategies (Basic, Comprehensive, Custom, Data Protection)
+- ✅ Lambda: 1 strategy (Go Lambda with ARM64 support)
+- ✅ EventBridge: 3 strategies (S3-to-Lambda, SNS-to-Lambda, SQS-to-Lambda)
 
 **Planned:**
 - ⏳ CloudFront: 3 additional strategies (API Gateway, ALB, Custom HTTP)
-- ⏳ Lambda: Factory + Strategy implementation
 - ⏳ API Gateway: Factory + Strategy implementation
 - ⏳ DynamoDB: Factory + Strategy implementation
 
@@ -447,3 +652,132 @@ The deployment script automates the full workflow:
 4. **Go Module Path:** Import paths use `cdk-library/constructs/...` (module name from `go.mod:1`)
 
 5. **JSII Pointers:** AWS CDK Go requires `jsii.String()`, `jsii.Bool()`, etc. for all pointer parameters
+
+6. **Lambda Runtime.InvalidEntrypoint:** If Lambda fails with `Couldn't find valid bootstrap(s)`:
+   - Verify executable is named `bootstrap` (not `main`)
+   - Verify compilation uses ARM64: `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bootstrap -tags lambda.norpc`
+   - Check Lambda architecture is set to ARM64 in construct
+   - File: `constructs/Lambda/go_lambda.go:57`
+
+7. **S3 EnforceSSL Error:** If deployment fails with `'enforceSSL' must be enabled for 'minimumTLSVersion'`:
+   - `EnforceSSL` must be `true` when using `MinimumTLSVersion`
+   - Fixed in: `constructs/S3/simple_storage_service_development.go:44`
+
+8. **Backend AWS Credentials Error:** If backend shows `no EC2 IMDS role found`:
+   - Backend should NOT use AWS SDK directly
+   - Use presigned URLs from Lambda webhook payload
+   - Use HTTP client (`http.DefaultClient.Do()`) instead of `s3.GetObject()`
+   - File: `stacks/addi/backend/api/internal/services/s3_service.go:42-60`
+
+9. **Object Lock Bucket Cannot Be Deleted:** Buckets with Object Lock COMPLIANCE cannot be deleted:
+   - COMPLIANCE mode is immutable (cannot be bypassed)
+   - Apply lifecycle policy to move to Glacier (reduce cost to near-zero)
+   - Document as "frozen infrastructure" if needed
+   - Consider using Development bucket type for testing
+
+10. **Docker Changes Not Applied:** If backend code changes don't take effect:
+    - Stop and remove specific container: `docker compose stop api && docker compose rm -f api`
+    - Rebuild with no cache: `docker compose build --no-cache api`
+    - Don't stop all services or ngrok URL will change
+    - Restart: `docker compose up -d api`
+
+## Troubleshooting Addi Pipeline
+
+### Testing End-to-End Flow
+
+**1. Verify S3 Bucket:**
+```bash
+aws s3 ls s3://addi-landing-zone-dev/uploads/ --recursive
+```
+
+**2. Check Lambda Logs:**
+```bash
+aws logs tail /aws/lambda/s3-to-sftp-webhook --follow
+```
+
+**3. Verify EventBridge Rule:**
+```bash
+aws events describe-rule --name S3EventRule
+aws events list-targets-by-rule --rule S3EventRule
+```
+
+**4. Test Upload:**
+```bash
+# Upload test file
+aws s3 cp test.csv s3://addi-landing-zone-dev/uploads/
+
+# Verify SFTP received file
+docker compose exec sftp ls -lh /home/uploader/2025/10/15/
+```
+
+**5. Check Dead Letter Queue:**
+```bash
+aws sqs receive-message --queue-url https://sqs.us-east-1.amazonaws.com/.../s3-events-dlq
+```
+
+### Common Pipeline Issues
+
+**Lambda not triggered:**
+- Check EventBridge rule is enabled
+- Verify event pattern matches bucket name
+- Check Lambda has permissions to be invoked by EventBridge
+
+**Backend not receiving webhook:**
+- Verify Lambda environment variable `WEBHOOK_URL` is correct
+- Check ngrok tunnel is active (if using ngrok)
+- Verify backend API is running: `docker compose ps`
+- Check backend logs: `docker compose logs -f api`
+
+**File not in SFTP:**
+- Check backend logs for SFTP connection errors
+- Verify SFTP credentials in docker-compose.yml
+- Test SFTP connection: `sftp -P 2222 uploader@localhost`
+- Check file permissions in SFTP container
+
+**Presigned URL expired:**
+- URLs expire after 1 hour by default
+- Check Lambda execution time vs webhook processing time
+- Consider increasing expiration if backend has delays
+
+### IAM User Setup for S3 Upload
+
+Clients need IAM credentials to upload to S3:
+
+**1. Create IAM User:**
+```bash
+aws iam create-user --user-name addi-s3-uploader
+```
+
+**2. Create Policy:**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": [
+      "s3:PutObject",
+      "s3:PutObjectAcl"
+    ],
+    "Resource": "arn:aws:s3:::addi-landing-zone-dev/uploads/*"
+  }]
+}
+```
+
+**3. Attach Policy:**
+```bash
+aws iam put-user-policy --user-name addi-s3-uploader \
+  --policy-name AddiS3UploadPolicy \
+  --policy-document file://policy.json
+```
+
+**4. Generate Access Keys:**
+```bash
+aws iam create-access-key --user-name addi-s3-uploader
+```
+
+**5. Client Upload:**
+```bash
+export AWS_ACCESS_KEY_ID="AKIAxxxxx"
+export AWS_SECRET_ACCESS_KEY="xxxxx"
+aws s3 cp file.csv s3://addi-landing-zone-dev/uploads/
+```

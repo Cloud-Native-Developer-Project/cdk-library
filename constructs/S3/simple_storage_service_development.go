@@ -41,7 +41,7 @@ func (s *SimpleStorageServiceDevelopmentStrategy) Build(scope constructs.Constru
 		BlockPublicAccess: awss3.BlockPublicAccess_BLOCK_ALL(),
 		Encryption:        awss3.BucketEncryption_S3_MANAGED,
 		BucketKeyEnabled:  jsii.Bool(false),  // Reduce complexity
-		EnforceSSL:        jsii.Bool(false),  // Reduce complexity for dev
+		EnforceSSL:        jsii.Bool(true),   // Required for TLS version
 		MinimumTLSVersion: jsii.Number(1.2),
 
 		// Object Ownership

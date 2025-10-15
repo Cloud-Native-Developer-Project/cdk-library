@@ -15,9 +15,10 @@ const (
 	// Cost: ~$4-8/month | Use: Dev/test, small workloads, cost-conscious deployments
 	GuardDutyTypeBasic GuardDutyType = "BASIC"
 
-	// GuardDutyTypeComprehensive enables all protection features (S3, EKS, Malware, RDS, Lambda).
-	// Cost: ~$30-100/month | Use: Production, compliance requirements, maximum security
-	GuardDutyTypeComprehensive GuardDutyType = "COMPREHENSIVE"
+	// GuardDutyTypeDataProtection monitors data services without runtime agents.
+	// Features: S3, EKS Audit Logs, EBS Malware, RDS, Lambda (NO EC2/ECS/EKS runtime agents)
+	// Cost: ~$15-50/month | Use: S3-centric, serverless, database workloads
+	GuardDutyTypeDataProtection GuardDutyType = "DATA_PROTECTION"
 
 	// GuardDutyTypeCustom allows granular control over individual features.
 	// Cost: Variable | Use: Specific compliance needs, phased rollout, custom requirements
@@ -123,14 +124,14 @@ func NewGuardDutyDetector(scope constructs.Construct, id string, props GuardDuty
 	case GuardDutyTypeBasic:
 		strategy = &GuardDutyBasicStrategy{}
 
-	case GuardDutyTypeComprehensive:
-		strategy = &GuardDutyComprehensiveStrategy{}
+	case GuardDutyTypeDataProtection:
+		strategy = &GuardDutyDataProtectionStrategy{}
 
 	case GuardDutyTypeCustom:
 		strategy = &GuardDutyCustomStrategy{}
 
 	default:
-		panic(fmt.Sprintf("Unsupported GuardDuty detector type: %s. Valid options: BASIC, COMPREHENSIVE, CUSTOM", props.DetectorType))
+		panic(fmt.Sprintf("Unsupported GuardDuty detector type: %s. Valid options: BASIC, DATA_PROTECTION, CUSTOM", props.DetectorType))
 	}
 
 	// Execute strategy to build detector

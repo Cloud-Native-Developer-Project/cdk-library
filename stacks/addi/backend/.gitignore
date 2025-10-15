@@ -1,0 +1,32 @@
+# Binaries
+bin/
+api/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Environment files
+.env
+.env.local
+
+# SFTP uploads (runtime data)
+sftp/uploads/*
+!sftp/uploads/.gitkeep
+
+# SSH keys (generated at runtime)
+sftp/ssh_keys/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
